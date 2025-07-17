@@ -1,0 +1,100 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/part-of: infrastructure
+    app.kubernetes.io/component: ingress-controller
+  finalizers: []
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: default
+  source:
+    repoURL: https://helm.traefik.io/traefik
+    targetRevision: 36.3.0
+    chart: traefik
+    helm:
+      releaseName: traefik
+      valueFiles:
+        - values.yaml
+      values: |
+        image:
+          tag: v3.4.3
+        deployment:
+          replicas: 2
+        service:
+          type: LoadBalancer
+          annotations:
+            metallb.universe.tf/loadBalancerIPs: "192.168.1.200"
+        ports:
+          web:
+            redirectTo:
+              port: websecure
+          websecure:
+            tls:
+              enabled: true
+        ingressRoute:
+          dashboard:
+            enabled: true
+            matchRule: Host(`traefik.susdomain.name`)
+            entryPoints: ["websecure"]
+            tls:
+              certResolver: letsencrypt
+        providers:
+          kubernetesIngress:
+            enabled: true
+            allowCrossNamespace: true
+            publishedService:
+              enabled: true
+          kubernetesCRD:
+            enabled: true
+            allowCrossNamespace: true
+        logs:
+          general:
+            level: INFO
+          access:
+            enabled: true
+        metrics:
+          prometheus:
+            enabled: true
+        globalArguments:
+          - "--global.checknewversion=false"
+          - "--global.sendanonymoususage=false"
+        additionalArguments:
+          - "--certificatesresolvers.letsencrypt.acme.email=admin@susdomain.name"
+          - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"
+          - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+          - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+        persistence:
+          enabled: true
+          size: 1Gi
+          path: /data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: traefik
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 10

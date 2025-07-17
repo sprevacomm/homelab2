@@ -1,0 +1,74 @@
+# Homelab Setup Documentation
+
+## Overview
+Setting up RKE2 cluster with:
+- MetalLB (v0.15.2) - Load balancer for bare metal Kubernetes
+- Traefik (v36.3.0) - Ingress controller with Let's Encrypt SSL
+- ArgoCD (v8.1.3) - GitOps continuous delivery
+
+## Domain Configuration
+- Base domain: `susdomain.name`
+- Apps pattern: `*.susdomain.name`
+- ArgoCD: `https://argocd.susdomain.name`
+- Traefik: `https://traefik.susdomain.name`
+
+## SSL Certificates
+Using Let's Encrypt for automatic SSL certificate management through Traefik.
+
+## Setup Progress
+
+### 1. MetalLB Setup
+**Status:** Completed
+- [x] Create ArgoCD application manifest
+- [x] Create Helm values configuration
+- [x] Define IP address pool for load balancer (192.168.1.200-192.168.1.250)
+- [x] Create L2 advertisement configuration
+- [x] Create manifests application for MetalLB configuration
+
+**Note:** Update the IP range in `metallb/manifests/base/ipaddresspool.yaml` to match your network.
+
+### 2. Traefik Setup
+**Status:** Completed
+- [x] Create ArgoCD application manifest
+- [x] Configure Helm values with Let's Encrypt
+- [x] Set up certificate resolver (letsencrypt)
+- [x] Configure ingress class
+- [x] Create dashboard ingress
+- [x] Create default security headers middleware
+- [x] Configure LoadBalancer service with MetalLB
+
+**Configuration:**
+- LoadBalancer IP: 192.168.1.200
+- Dashboard URL: https://traefik.susdomain.name
+- Let's Encrypt email: admin@susdomain.name
+- Auto-redirect HTTP to HTTPS enabled
+
+### 3. ArgoCD Setup
+**Status:** Completed
+- [x] Create namespace and initial resources
+- [x] Create ArgoCD Helm values configuration
+- [x] Configure Helm values with repositories
+- [x] Set up ingress with SSL via Traefik
+- [x] Configure admin credentials (default: admin/admin)
+- [x] Create bootstrap script for initial deployment
+- [x] Create app-of-apps pattern for infrastructure
+
+**Configuration:**
+- URL: https://argocd.susdomain.name
+- Default admin password: admin (change after first login)
+- Repositories configured: homelab2 (git), metallb, traefik, argo (helm)
+
+### 4. Deployment
+**Status:** Pending
+- [ ] Deploy ArgoCD using kubectl
+- [ ] Deploy MetalLB via ArgoCD
+- [ ] Deploy Traefik via ArgoCD
+- [ ] Verify all components are running
+- [ ] Test ingress and SSL certificates
+
+## Architecture Notes
+Following GitOps pattern with:
+- Each component in separate directory under `/gitops/infra/`
+- ArgoCD Application manifests for each component
+- Helm charts with custom values
+- Kustomize for additional manifests when needed

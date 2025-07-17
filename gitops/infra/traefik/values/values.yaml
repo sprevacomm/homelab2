@@ -1,0 +1,124 @@
+# Traefik Helm Values
+# Full configuration for Traefik with Let's Encrypt
+
+image:
+  tag: v3.4.3
+
+deployment:
+  replicas: 2
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8082"
+
+service:
+  type: LoadBalancer
+  annotations:
+    # Request specific IP from MetalLB
+    metallb.universe.tf/loadBalancerIPs: "192.168.1.200"
+
+ports:
+  web:
+    port: 80
+    expose: true
+    exposedPort: 80
+    protocol: TCP
+    redirectTo:
+      port: websecure
+  websecure:
+    port: 443
+    expose: true
+    exposedPort: 443
+    protocol: TCP
+    tls:
+      enabled: true
+
+# Enable Traefik dashboard
+ingressRoute:
+  dashboard:
+    enabled: true
+    matchRule: Host(`traefik.susdomain.name`)
+    entryPoints: ["websecure"]
+    tls:
+      certResolver: letsencrypt
+
+# Providers configuration
+providers:
+  kubernetesIngress:
+    enabled: true
+    allowCrossNamespace: true
+    publishedService:
+      enabled: true
+  kubernetesCRD:
+    enabled: true
+    allowCrossNamespace: true
+
+# Logging
+logs:
+  general:
+    level: INFO
+  access:
+    enabled: true
+
+# Metrics
+metrics:
+  prometheus:
+    enabled: true
+    entryPoint: metrics
+    addEntryPointsLabels: true
+    addServicesLabels: true
+
+# Global arguments
+globalArguments:
+  - "--global.checknewversion=false"
+  - "--global.sendanonymoususage=false"
+
+# Additional arguments for Let's Encrypt
+additionalArguments:
+  - "--certificatesresolvers.letsencrypt.acme.email=admin@susdomain.name"
+  - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"
+  - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+  - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+  # Use staging server for testing (remove for production)
+  # - "--certificatesresolvers.letsencrypt.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+
+# Persistence for Let's Encrypt certificates
+persistence:
+  enabled: true
+  size: 1Gi
+  path: /data
+  accessMode: ReadWriteOnce
+
+# Resources
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Security contexts
+podSecurityContext:
+  fsGroup: 65532
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+
+# Affinity for pod distribution
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - traefik
+          topologyKey: kubernetes.io/hostname
