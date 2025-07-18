@@ -10,6 +10,7 @@ This repository contains the GitOps configuration for a complete Kubernetes home
 - [ArgoCD Documentation](./argocd/README.md) - GitOps continuous delivery
 - [MetalLB Documentation](./metallb/README.md) - Bare metal load balancer
 - [Traefik Documentation](./traefik/README.md) - Ingress controller with Let's Encrypt
+- [Monitoring Documentation](./monitoring/README.md) - Prometheus, Grafana, and Alertmanager
 - [Initial Setup Guide](./homelab-setup.md) - Original setup instructions
 - [Troubleshooting Guide](./TROUBLESHOOTING.md) - Common issues and solutions
 
@@ -66,6 +67,13 @@ flowchart TB
 - **Purpose:** HTTP/HTTPS routing and SSL termination
 - **Features:** Automatic Let's Encrypt certificates
 - [Full Documentation](./traefik/README.md)
+
+### 4. Monitoring Stack (Observability)
+- **Prometheus:** v0.83.0 - Metrics collection and storage
+- **Grafana:** 10.x - Visualization and dashboards
+- **Alertmanager:** 0.27.x - Alert routing and notifications
+- **Features:** Pre-configured dashboards, ServiceMonitors, and alerts
+- [Full Documentation](./monitoring/README.md)
 
 ## Prerequisites
 

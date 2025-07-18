@@ -1,0 +1,133 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack-prometheus
+    app.kubernetes.io/name: homelab-alerts
+spec:
+  groups:
+    - name: homelab.rules
+      interval: 30s
+      rules:
+        # Node alerts
+        - alert: NodeHighCPUUsage
+          expr: |
+            100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High CPU usage detected on node {{ $labels.instance }}"
+            description: "CPU usage is above 80% (current value: {{ $value | humanize }}%)"
+        
+        - alert: NodeHighMemoryUsage
+          expr: |
+            (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High memory usage detected on node {{ $labels.instance }}"
+            description: "Memory usage is above 85% (current value: {{ $value | humanize }}%)"
+        
+        - alert: NodeDiskSpaceLow
+          expr: |
+            100 - ((node_filesystem_avail_bytes{mountpoint="/",fstype!="tmpfs"} * 100) / node_filesystem_size_bytes{mountpoint="/",fstype!="tmpfs"}) > 80
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Low disk space on node {{ $labels.instance }}"
+            description: "Disk usage is above 80% (current value: {{ $value | humanize }}%)"
+        
+        # Kubernetes alerts
+        - alert: KubernetesPodCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total[15m]) > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+            description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is restarting {{ $value }} times per minute"
+        
+        - alert: KubernetesPodNotReady
+          expr: |
+            sum by (namespace, pod) (kube_pod_status_phase{phase=~"Pending|Unknown"}) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is not ready"
+            description: "Pod has been in non-ready state for more than 15 minutes"
+        
+        - alert: KubernetesDeploymentReplicasMismatch
+          expr: |
+            kube_deployment_spec_replicas != kube_deployment_status_replicas_available
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} replica mismatch"
+            description: "Deployment has {{ $value }} replicas available, expected {{ $labels.spec_replicas }}"
+        
+        # ArgoCD alerts
+        - alert: ArgoCDAppHealthDegraded
+          expr: |
+            argocd_app_health_status{health_status!="Healthy"} > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "ArgoCD application {{ $labels.name }} is not healthy"
+            description: "Application health status is {{ $labels.health_status }}"
+        
+        - alert: ArgoCDAppSyncFailed
+          expr: |
+            argocd_app_sync_total{phase="Failed"} > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "ArgoCD application {{ $labels.name }} sync failed"
+            description: "Application sync has failed in namespace {{ $labels.namespace }}"
+        
+        # Traefik alerts
+        - alert: TraefikHighHttp4xxErrorRate
+          expr: |
+            sum(rate(traefik_service_requests_total{code=~"4.."}[5m])) by (service)
+            /
+            sum(rate(traefik_service_requests_total[5m])) by (service)
+            > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High HTTP 4xx error rate for service {{ $labels.service }}"
+            description: "HTTP 4xx error rate is {{ $value | humanizePercentage }} for service {{ $labels.service }}"
+        
+        - alert: TraefikHighHttp5xxErrorRate
+          expr: |
+            sum(rate(traefik_service_requests_total{code=~"5.."}[5m])) by (service)
+            /
+            sum(rate(traefik_service_requests_total[5m])) by (service)
+            > 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "High HTTP 5xx error rate for service {{ $labels.service }}"
+            description: "HTTP 5xx error rate is {{ $value | humanizePercentage }} for service {{ $labels.service }}"
+        
+        # Certificate alerts
+        - alert: CertificateExpiringSoon
+          expr: |
+            traefik_tls_certs_not_after - time() < 7 * 24 * 3600
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "TLS certificate expiring soon for {{ $labels.cn }}"
+            description: "Certificate for {{ $labels.cn }} will expire in {{ $value | humanizeDuration }}"

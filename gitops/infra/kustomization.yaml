@@ -6,3 +6,5 @@ resources:
   - metallb/manifests-application.yaml
   - traefik/application.yaml
   - traefik/manifests-application.yaml
+  - monitoring/application.yaml
+  - monitoring/manifests-application.yaml

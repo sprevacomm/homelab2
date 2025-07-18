@@ -1,0 +1,326 @@
+# Kube-Prometheus-Stack Helm Values
+# Version: 75.11.0
+# Includes: Prometheus, Grafana, Alertmanager, and various exporters
+
+# Global settings
+global:
+  rbac:
+    create: true
+
+# Prometheus Operator
+prometheusOperator:
+  enabled: true
+  manageCrds: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 100Mi
+    limits:
+      cpu: 200m
+      memory: 200Mi
+
+# Prometheus Configuration
+prometheus:
+  enabled: true
+  prometheusSpec:
+    replicas: 1
+    retention: 30d
+    retentionSize: "10GB"
+    
+    # Resource limits
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+    
+    # Storage configuration
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+    
+    # Service discovery
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector: {}
+    
+    # Additional scrape configs for services
+    additionalScrapeConfigs:
+      - job_name: 'traefik'
+        static_configs:
+          - targets: ['traefik.traefik.svc.cluster.local:8082']
+      
+      - job_name: 'argocd-metrics'
+        static_configs:
+          - targets: 
+            - 'argocd-applicationset-controller.argocd.svc.cluster.local:8080'
+            - 'argocd-repo-server.argocd.svc.cluster.local:8084'
+            - 'argocd-server.argocd.svc.cluster.local:8083'
+            - 'argocd-dex-server.argocd.svc.cluster.local:5558'
+      
+      - job_name: 'metallb-metrics'
+        static_configs:
+          - targets: ['metallb-controller.metallb-system.svc.cluster.local:7472']
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 9090
+
+# Grafana Configuration
+grafana:
+  enabled: true
+  
+  # Admin credentials (change after first login)
+  adminPassword: admin
+  
+  # Ingress configuration
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+      traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+      traefik.ingress.kubernetes.io/router.middlewares: traefik-default-headers@kubernetescrd
+    hosts:
+      - grafana.susdomain.name
+    paths:
+      - /
+    pathType: Prefix
+    tls:
+      - hosts:
+          - grafana.susdomain.name
+        secretName: grafana-tls
+  
+  # Resources
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  
+  # Persistence
+  persistence:
+    enabled: true
+    size: 5Gi
+    accessModes:
+      - ReadWriteOnce
+  
+  # Grafana.ini configuration
+  grafana.ini:
+    server:
+      root_url: https://grafana.susdomain.name
+    auth:
+      disable_login_form: false
+    auth.anonymous:
+      enabled: true
+      org_role: Viewer
+    dashboards:
+      default_home_dashboard_path: /var/lib/grafana/dashboards/default/node-exporter-full.json
+  
+  # Sidecar for dashboard provisioning
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+      provider:
+        allowUiUpdates: true
+    datasources:
+      enabled: true
+      defaultDatasourceEnabled: true
+  
+  # Pre-installed dashboards
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'default'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+  
+  dashboardsConfigMaps:
+    default: grafana-dashboards
+
+# Alertmanager Configuration
+alertmanager:
+  enabled: true
+  
+  # Ingress configuration
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+      traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+      traefik.ingress.kubernetes.io/router.middlewares: traefik-default-headers@kubernetescrd
+    hosts:
+      - alertmanager.susdomain.name
+    paths:
+      - /
+    pathType: Prefix
+    tls:
+      - hosts:
+          - alertmanager.susdomain.name
+        secretName: alertmanager-tls
+  
+  alertmanagerSpec:
+    replicas: 1
+    retention: 120h
+    
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+    
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+  
+  # Default alert configuration
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 12h
+      receiver: 'null'
+      routes:
+        - match:
+            alertname: Watchdog
+          receiver: 'null'
+        - match:
+            severity: critical
+          receiver: 'critical-notifications'
+        - match:
+            severity: warning
+          receiver: 'warning-notifications'
+    receivers:
+      - name: 'null'
+      - name: 'critical-notifications'
+        # Configure your notification channels here
+        # Example: email, slack, pagerduty, etc.
+      - name: 'warning-notifications'
+        # Configure your notification channels here
+
+# Node Exporter
+nodeExporter:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 30Mi
+    limits:
+      cpu: 100m
+      memory: 50Mi
+
+# Kube State Metrics
+kubeStateMetrics:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# Prometheus Node Exporter
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 30Mi
+    limits:
+      cpu: 100m
+      memory: 50Mi
+
+# Component specific monitors
+kubeApiServer:
+  enabled: true
+
+kubeControllerManager:
+  enabled: true
+  endpoints:
+    - 192.168.1.x  # Update with your master node IP
+
+kubeScheduler:
+  enabled: true
+  endpoints:
+    - 192.168.1.x  # Update with your master node IP
+
+kubeProxy:
+  enabled: true
+
+kubeEtcd:
+  enabled: true
+  endpoints:
+    - 192.168.1.x  # Update with your master node IP
+
+# Default rules
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: true
+    configReloaders: true
+    general: true
+    k8s: true
+    kubeApiserverAvailability: true
+    kubeApiserverBurnrate: true
+    kubeApiserverHistogram: true
+    kubeApiserverSlos: true
+    kubeControllerManager: true
+    kubelet: true
+    kubeProxy: true
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeSchedulerAlerting: true
+    kubeSchedulerRecording: true
+    kubeStateMetrics: true
+    network: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true
+
+# Additional ServiceMonitors
+additionalServiceMonitors: []
+# Example:
+# - name: traefik-metrics
+#   selector:
+#     matchLabels:
+#       app.kubernetes.io/name: traefik
+#   namespaceSelector:
+#     matchNames:
+#       - traefik
+#   endpoints:
+#     - port: metrics
+#       interval: 30s
