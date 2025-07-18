@@ -31,9 +31,15 @@ spec:
             metallb.universe.tf/loadBalancerIPs: "192.168.1.200"
         ports:
           web:
-            redirectTo:
-              port: websecure
+            port: 80
+            expose: true
+            exposedPort: 80
+            protocol: TCP
           websecure:
+            port: 443
+            expose: true
+            exposedPort: 443
+            protocol: TCP
             tls:
               enabled: true
         ingressRoute:
@@ -64,6 +70,8 @@ spec:
           - "--global.checknewversion=false"
           - "--global.sendanonymoususage=false"
         additionalArguments:
+          - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+          - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
           - "--certificatesresolvers.letsencrypt.acme.email=admin@susdomain.name"
           - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"
           - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"

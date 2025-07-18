@@ -22,8 +22,6 @@ ports:
     expose: true
     exposedPort: 80
     protocol: TCP
-    redirectTo:
-      port: websecure
   websecure:
     port: 443
     expose: true
@@ -72,8 +70,12 @@ globalArguments:
   - "--global.checknewversion=false"
   - "--global.sendanonymoususage=false"
 
-# Additional arguments for Let's Encrypt
+# Additional arguments for Let's Encrypt and redirects
 additionalArguments:
+  # HTTP to HTTPS redirect
+  - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+  - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+  # Let's Encrypt configuration
   - "--certificatesresolvers.letsencrypt.acme.email=admin@susdomain.name"
   - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"
   - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
