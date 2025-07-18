@@ -15,48 +15,36 @@ This repository contains the GitOps configuration for a complete Kubernetes home
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                           Internet                                    │
-└────────────────────────────┬─────────────────────────────────────────┘
-                             │
-                    ┌────────▼────────┐
-                    │   DNS Provider   │
-                    │ *.susdomain.name │
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │     Router       │
-                    │  192.168.1.1     │
-                    └────────┬────────┘
-                             │
-         ┌───────────────────┼───────────────────┐
-         │                   │                   │
-┌────────▼────────┐ ┌────────▼────────┐ ┌────────▼────────┐
-│  RKE2 Master    │ │  RKE2 Worker 1  │ │  RKE2 Worker 2  │
-│  192.168.1.x    │ │  192.168.1.x    │ │  192.168.1.x    │
-└─────────────────┘ └─────────────────┘ └─────────────────┘
-         │                   │                   │
-         └───────────────────┼───────────────────┘
-                             │
-                    ┌────────▼────────┐
-                    │     MetalLB      │
-                    │ 192.168.1.200   │
-                    │      -250        │
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │     Traefik      │
-                    │  LoadBalancer    │
-                    │ 192.168.1.200   │
-                    └────────┬────────┘
-                             │
-         ┌───────────────────┼───────────────────┐
-         │                   │                   │
-┌────────▼────────┐ ┌────────▼────────┐ ┌────────▼────────┐
-│     ArgoCD      │ │   Application   │ │   Application   │
-│   Management    │ │    Services     │ │    Services     │
-└─────────────────┘ └─────────────────┘ └─────────────────┘
+```mermaid
+flowchart TB
+    Internet[Internet] --> DNS[DNS Provider<br/>*.susdomain.name]
+    DNS --> Router[Router<br/>192.168.1.1]
+    Router --> Cluster
+    
+    subgraph Cluster[RKE2 Cluster]
+        Master[RKE2 Master<br/>192.168.1.x]
+        Worker1[RKE2 Worker 1<br/>192.168.1.x]
+        Worker2[RKE2 Worker 2<br/>192.168.1.x]
+    end
+    
+    Cluster --> MetalLB[MetalLB<br/>192.168.1.200-250]
+    MetalLB --> Traefik[Traefik LoadBalancer<br/>192.168.1.200]
+    
+    Traefik --> ArgoCD[ArgoCD<br/>Management]
+    Traefik --> Apps1[Application<br/>Services]
+    Traefik --> Apps2[Application<br/>Services]
+    
+    style Internet fill:#e3f2fd
+    style DNS fill:#e1bee7
+    style Router fill:#fff9c4
+    style Master fill:#c8e6c9
+    style Worker1 fill:#c8e6c9
+    style Worker2 fill:#c8e6c9
+    style MetalLB fill:#ffccbc
+    style Traefik fill:#b2dfdb
+    style ArgoCD fill:#f8bbd0
+    style Apps1 fill:#d7ccc8
+    style Apps2 fill:#d7ccc8
 ```
 
 ## Components
@@ -103,8 +91,18 @@ Before starting, ensure you have:
 
 ⚠️ **The installation sequence is critical for proper functionality!**
 
-```
-1. Prerequisites (Storage Class) → 2. ArgoCD → 3. MetalLB → 4. Traefik → 5. Applications
+```mermaid
+graph LR
+    A[1. Prerequisites<br/>Storage Class] --> B[2. ArgoCD]
+    B --> C[3. MetalLB]
+    C --> D[4. Traefik]
+    D --> E[5. Applications]
+    
+    style A fill:#e3f2fd
+    style B fill:#c8e6c9
+    style C fill:#ffccbc
+    style D fill:#b2dfdb
+    style E fill:#f8bbd0
 ```
 
 See [Installation Sequence Guide](./INSTALLATION_SEQUENCE.md) for detailed step-by-step instructions.
@@ -183,29 +181,35 @@ Point `*.yourdomain.com` to your LoadBalancer IP
 
 ## Directory Structure
 
-```
-gitops/infra/
-├── README.md                 # This file
-├── homelab-setup.md         # Initial setup guide
-├── TROUBLESHOOTING.md       # Troubleshooting guide
-├── kustomization.yaml       # Root kustomization
-│
-├── argocd/                  # ArgoCD configuration
-│   ├── README.md           # Detailed ArgoCD docs
-│   ├── bootstrap.sh        # Installation script
-│   ├── values/             # Helm values
-│   └── manifests/          # Kubernetes manifests
-│
-├── metallb/                 # MetalLB configuration
-│   ├── README.md           # Detailed MetalLB docs
-│   ├── application.yaml    # ArgoCD application
-│   └── manifests/          # Configuration resources
-│
-└── traefik/                 # Traefik configuration
-    ├── README.md           # Detailed Traefik docs
-    ├── application.yaml    # ArgoCD application
-    ├── values/             # Helm values
-    └── manifests/          # Additional resources
+```mermaid
+graph TD
+    A[gitops/infra/] --> B[README.md]
+    A --> C[INSTALLATION_SEQUENCE.md]
+    A --> D[TROUBLESHOOTING.md]
+    A --> E[prerequisites.sh]
+    A --> F[quick-setup.sh]
+    
+    A --> G[argocd/]
+    G --> G1[README.md]
+    G --> G2[bootstrap.sh]
+    G --> G3[values/]
+    G --> G4[manifests/]
+    
+    A --> H[metallb/]
+    H --> H1[README.md]
+    H --> H2[application.yaml]
+    H --> H3[manifests/]
+    
+    A --> I[traefik/]
+    I --> I1[README.md]
+    I --> I2[application.yaml]
+    I --> I3[values/]
+    I --> I4[manifests/]
+    
+    style A fill:#e3f2fd
+    style G fill:#c8e6c9
+    style H fill:#ffccbc
+    style I fill:#b2dfdb
 ```
 
 ## Common Operations

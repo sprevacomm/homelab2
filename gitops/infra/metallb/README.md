@@ -10,16 +10,17 @@ MetalLB is a load-balancer implementation for bare metal Kubernetes clusters usi
 
 ## Architecture
 
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Service    │────▶│   MetalLB    │────▶│   Network    │
-│ Type: LB     │     │  Controller  │     │  Interface   │
-└──────────────┘     └──────────────┘     └──────────────┘
-                            │
-                     ┌──────▼──────┐
-                     │   Speaker    │
-                     │  (DaemonSet) │
-                     └──────────────┘
+```mermaid
+flowchart TD
+    Service[Service<br/>Type: LoadBalancer] -->|Requests IP| Controller[MetalLB<br/>Controller]
+    Controller -->|Assigns IP| Network[Network<br/>Interface]
+    Controller -->|Configures| Speaker[Speaker<br/>DaemonSet]
+    Speaker -->|Announces IP| Network
+    
+    style Service fill:#e3f2fd
+    style Controller fill:#ffccbc
+    style Speaker fill:#fff9c4
+    style Network fill:#c8e6c9
 ```
 
 ### Components

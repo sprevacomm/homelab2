@@ -10,11 +10,14 @@ ArgoCD is a declarative, GitOps continuous delivery tool for Kubernetes. It moni
 
 ## Architecture
 
-```
-┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
-│   Git Repo      │────▶│   ArgoCD     │────▶│  RKE2 Cluster   │
-│ (homelab2)      │     │  Controller  │     │   Resources     │
-└─────────────────┘     └──────────────┘     └─────────────────┘
+```mermaid
+flowchart LR
+    GitRepo[Git Repo<br/>homelab2] -->|Monitors| ArgoCD[ArgoCD<br/>Controller]
+    ArgoCD -->|Syncs| Cluster[RKE2 Cluster<br/>Resources]
+    
+    style GitRepo fill:#e3f2fd
+    style ArgoCD fill:#c8e6c9
+    style Cluster fill:#fff9c4
 ```
 
 ### Components

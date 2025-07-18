@@ -10,18 +10,21 @@ Traefik is a modern HTTP reverse proxy and load balancer that makes deploying mi
 
 ## Architecture
 
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Internet   │────▶│   MetalLB    │────▶│   Traefik    │
-│   Traffic    │     │ LoadBalancer │     │   Ingress    │
-└──────────────┘     └──────────────┘     └──────────────┘
-                                                   │
-                     ┌─────────────────────────────┼─────────────────────────────┐
-                     │                             │                             │
-              ┌──────▼──────┐            ┌─────────▼────────┐          ┌────────▼────────┐
-              │   Service   │            │    Service       │          │    Service      │
-              │     App1    │            │      App2        │          │      App3       │
-              └─────────────┘            └──────────────────┘          └─────────────────┘
+```mermaid
+flowchart TD
+    Internet[Internet<br/>Traffic] -->|Port 80/443| MetalLB[MetalLB<br/>LoadBalancer]
+    MetalLB -->|Routes to| Traefik[Traefik<br/>Ingress Controller]
+    
+    Traefik -->|Routes by Host/Path| App1[Service<br/>App1]
+    Traefik -->|Routes by Host/Path| App2[Service<br/>App2]
+    Traefik -->|Routes by Host/Path| App3[Service<br/>App3]
+    
+    style Internet fill:#e3f2fd
+    style MetalLB fill:#ffccbc
+    style Traefik fill:#b2dfdb
+    style App1 fill:#fff9c4
+    style App2 fill:#fff9c4
+    style App3 fill:#fff9c4
 ```
 
 ### Components

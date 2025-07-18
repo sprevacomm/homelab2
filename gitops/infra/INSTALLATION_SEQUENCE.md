@@ -4,25 +4,27 @@ This document provides the detailed installation sequence for setting up the com
 
 ## Installation Overview
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Installation Flow                          │
-├─────────────────────────────────────────────────────────────┤
-│ 1. Prerequisites Check                                        │
-│    └─> Verify cluster, tools, network                        │
-│ 2. Storage Class Setup                                        │
-│    └─> Required for persistent volumes                       │
-│ 3. Pre-ArgoCD Setup                                          │
-│    └─> Run prerequisites.sh script                           │
-│ 4. ArgoCD Installation                                        │
-│    └─> Bootstrap GitOps controller                           │
-│ 5. Infrastructure Deployment                                  │
-│    └─> Deploy MetalLB → Traefik → Apps                      │
-│ 6. DNS Configuration                                          │
-│    └─> Configure external DNS                                │
-│ 7. Post-Installation                                          │
-│    └─> Security hardening, backups                          │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A[Prerequisites Check] -->|Verify cluster, tools, network| B[Storage Class Setup]
+    B -->|Required for persistent volumes| C[Pre-ArgoCD Setup]
+    C -->|Run prerequisites.sh script| D[ArgoCD Installation]
+    D -->|Bootstrap GitOps controller| E[Infrastructure Deployment]
+    E -->|Deploy components| F[DNS Configuration]
+    F -->|Configure external DNS| G[Post-Installation]
+    
+    subgraph E[Infrastructure Deployment]
+        E1[MetalLB] --> E2[Traefik]
+        E2 --> E3[Applications]
+    end
+    
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style C fill:#fff3e0
+    style D fill:#e8f5e9
+    style E fill:#fce4ec
+    style F fill:#f1f8e9
+    style G fill:#e0f2f1
 ```
 
 ## Detailed Installation Sequence
@@ -245,6 +247,16 @@ graph TD
     
     H[DNS Configuration] --> F
     I[SSL Certificates] --> F
+    
+    style A fill:#e3f2fd
+    style B fill:#f3e5f5
+    style C fill:#fff9c4
+    style D fill:#c8e6c9
+    style E fill:#ffccbc
+    style F fill:#b2dfdb
+    style G fill:#d7ccc8
+    style H fill:#e1bee7
+    style I fill:#ffcdd2
 ```
 
 ## Critical Notes
