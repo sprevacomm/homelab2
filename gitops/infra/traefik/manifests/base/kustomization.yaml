@@ -6,4 +6,4 @@ namespace: traefik
 resources:
   - namespace.yaml
   - default-headers-middleware.yaml
-  - traefik-dashboard-ingress.yaml
+  - traefik-dashboard-ingressroute.yaml
