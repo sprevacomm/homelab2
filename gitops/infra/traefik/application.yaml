@@ -24,7 +24,7 @@ spec:
         image:
           tag: v3.4.3
         deployment:
-          replicas: 2
+          replicas: 1
         service:
           type: LoadBalancer
           annotations:
