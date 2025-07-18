@@ -86,8 +86,9 @@ additionalArguments:
   # - "--certificatesresolvers.letsencrypt.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
 
 # Persistence for Let's Encrypt certificates
+# TODO: Enable once storage class is configured
 persistence:
-  enabled: true
+  enabled: false
   size: 1Gi
   path: /data
   accessMode: ReadWriteOnce
