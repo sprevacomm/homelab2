@@ -59,12 +59,44 @@ Using Let's Encrypt for automatic SSL certificate management through Traefik.
 - Repositories configured: homelab2 (git), metallb, traefik, argo (helm)
 
 ### 4. Deployment
-**Status:** Pending
-- [ ] Deploy ArgoCD using kubectl
-- [ ] Deploy MetalLB via ArgoCD
-- [ ] Deploy Traefik via ArgoCD
-- [ ] Verify all components are running
-- [ ] Test ingress and SSL certificates
+**Status:** Completed
+- [x] Deploy ArgoCD using kubectl
+- [x] Deploy MetalLB via ArgoCD
+- [x] Deploy Traefik via ArgoCD
+- [x] Verify all components are running
+- [x] Test ingress and SSL certificates
+
+**Deployment Summary:**
+- ArgoCD: Running at https://argocd.susdomain.name (pending DNS setup)
+- Traefik: Running with LoadBalancer IP 192.168.1.200
+- MetalLB: Configured with IP pool 192.168.1.200-192.168.1.250
+- All pods are healthy and running
+
+## Next Steps
+
+1. **Configure DNS:**
+   - Point `*.susdomain.name` to 192.168.1.200
+   - Verify DNS resolution for argocd.susdomain.name and traefik.susdomain.name
+
+2. **Enable Storage:**
+   - Set up a storage class (e.g., local-path-provisioner or NFS)
+   - Re-enable Traefik persistence for Let's Encrypt certificates
+
+3. **Security:**
+   - Change ArgoCD admin password (current: admin/admin)
+   - Review and adjust RBAC policies
+   - Enable production Let's Encrypt (currently using staging)
+
+4. **Monitoring:**
+   - Consider adding Prometheus and Grafana
+   - Enable metrics collection for all components
+
+## Important Notes
+
+- **IP Address Pool:** Update the MetalLB IP range in `metallb/manifests/base/ipaddresspool.yaml` to match your network
+- **Let's Encrypt Email:** Update the email in `traefik/values/values.yaml` to your actual email
+- **Persistence:** Currently disabled for Traefik due to missing storage class
+- **SSL Certificates:** Will be automatically provisioned by Let's Encrypt once DNS is configured
 
 ## Architecture Notes
 Following GitOps pattern with:
