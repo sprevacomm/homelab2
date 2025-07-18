@@ -86,7 +86,7 @@ configs:
     # Add repositories
     repositories: |
       - type: git
-        url: https://github.com/seanpatnode/homelab2.git
+        url: https://github.com/sprevacomm/homelab2.git
         name: homelab2
       - type: helm
         url: https://metallb.github.io/metallb
