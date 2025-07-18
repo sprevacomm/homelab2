@@ -6,10 +6,11 @@ This repository contains the GitOps configuration for a complete Kubernetes home
 
 ## Quick Links
 
+- [Installation Sequence](./INSTALLATION_SEQUENCE.md) - **START HERE** - Detailed installation order
 - [ArgoCD Documentation](./argocd/README.md) - GitOps continuous delivery
 - [MetalLB Documentation](./metallb/README.md) - Bare metal load balancer
 - [Traefik Documentation](./traefik/README.md) - Ingress controller with Let's Encrypt
-- [Initial Setup Guide](./homelab-setup.md) - Step-by-step setup instructions
+- [Initial Setup Guide](./homelab-setup.md) - Original setup instructions
 - [Troubleshooting Guide](./TROUBLESHOOTING.md) - Common issues and solutions
 
 ## Architecture
@@ -98,6 +99,16 @@ Before starting, ensure you have:
    - Git client
    - ArgoCD CLI (optional)
 
+## Installation Order (CRITICAL)
+
+⚠️ **The installation sequence is critical for proper functionality!**
+
+```
+1. Prerequisites (Storage Class) → 2. ArgoCD → 3. MetalLB → 4. Traefik → 5. Applications
+```
+
+See [Installation Sequence Guide](./INSTALLATION_SEQUENCE.md) for detailed step-by-step instructions.
+
 ## Quick Start
 
 ### 1. Clone Repository
@@ -106,7 +117,17 @@ git clone https://github.com/sprevacomm/homelab2.git
 cd homelab2/gitops/infra
 ```
 
-### 2. Update Configuration
+### 2. Run Prerequisites Script
+```bash
+# This script will:
+# - Check cluster access
+# - Install storage class if needed
+# - Create namespaces
+# - Verify requirements
+./prerequisites.sh
+```
+
+### 3. Update Configuration
 
 #### MetalLB IP Range
 Edit `metallb/manifests/base/ipaddresspool.yaml`:
@@ -128,21 +149,37 @@ additionalArguments:
 ```
 
 #### Domain Names
-Update all references to `susdomain.name` with your actual domain.
+Update all references to `susdomain.name` with your actual domain:
+```bash
+find . -type f -name "*.yaml" -exec grep -l "susdomain.name" {} \; | \
+  xargs sed -i 's/susdomain.name/yourdomain.com/g'
+```
 
-### 3. Install ArgoCD
+### 4. Commit Changes
+```bash
+git add -A
+git commit -m "Update configuration for my environment"
+git push origin main
+```
+
+### 5. Install ArgoCD
 ```bash
 cd argocd
 ./bootstrap.sh
 ```
 
-### 4. Deploy Infrastructure
+### 6. Deploy Infrastructure
 ```bash
 kubectl apply -f manifests/base/app-of-apps.yaml
 ```
 
-### 5. Configure DNS
-Point `*.susdomain.name` to your MetalLB IP (192.168.1.200)
+### 7. Configure DNS
+After MetalLB assigns the LoadBalancer IP:
+```bash
+kubectl get svc -n traefik traefik
+# Note the EXTERNAL-IP
+```
+Point `*.yourdomain.com` to your LoadBalancer IP
 
 ## Directory Structure
 

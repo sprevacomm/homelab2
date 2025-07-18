@@ -18,12 +18,31 @@ if ! command -v helm &> /dev/null; then
     exit 1
 fi
 
+# Check if prerequisites have been run
+echo "Checking prerequisites..."
+if ! kubectl get namespace argocd &> /dev/null; then
+    echo "ERROR: ArgoCD namespace not found!"
+    echo "Please run the prerequisites.sh script first:"
+    echo "  cd .. && ./prerequisites.sh"
+    exit 1
+fi
+
+# Check for storage class
+if ! kubectl get storageclass -o json 2>/dev/null | grep -q '"storageclass.kubernetes.io/is-default-class":"true"'; then
+    echo "WARNING: No default storage class found!"
+    echo "This may cause issues with persistent volumes."
+    read -p "Do you want to continue anyway? (y/n): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
 echo "Adding ArgoCD Helm repository..."
 helm repo add argo https://argoproj.github.io/argo-helm
 helm repo update
 
-echo "Creating ArgoCD namespace..."
-kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+echo "ArgoCD namespace already exists (created by prerequisites.sh)"
 
 echo "Installing ArgoCD..."
 helm upgrade --install argocd argo/argo-cd \
