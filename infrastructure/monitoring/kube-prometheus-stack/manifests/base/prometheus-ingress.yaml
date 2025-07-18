@@ -1,0 +1,48 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus
+  namespace: monitoring
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+    traefik.ingress.kubernetes.io/router.middlewares: traefik-default-headers@kubernetescrd,monitoring-basic-auth@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: prometheus.susdomain.name
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kube-prometheus-stack-prometheus
+                port:
+                  number: 9090
+  tls:
+    - hosts:
+        - prometheus.susdomain.name
+      secretName: prometheus-tls
+---
+# Basic auth middleware for Prometheus (optional)
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: monitoring-basic-auth
+  namespace: monitoring
+spec:
+  basicAuth:
+    secret: basic-auth-secret
+---
+# Create secret with: htpasswd -nb admin <password> | base64
+apiVersion: v1
+kind: Secret
+metadata:
+  name: basic-auth-secret
+  namespace: monitoring
+type: Opaque
+data:
+  users: |
+    # admin:admin (change this!)
+    YWRtaW46JDJ5JDEwJDlGM0VzLkZIQzI5Qk1XUi5IUUdUL09Zby5nUmVPM2p0V3A5cHdUZTlHZDdIYjUzVEhxCg==

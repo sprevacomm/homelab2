@@ -1,0 +1,76 @@
+name: Validate Infrastructure
+
+on:
+  pull_request:
+    paths:
+      - 'infrastructure/**'
+      - 'gitops/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'infrastructure/**'
+      - 'gitops/**'
+
+jobs:
+  validate-yaml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Validate YAML files
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: .
+          config_data: |
+            extends: default
+            rules:
+              line-length:
+                max: 150
+              comments:
+                min-spaces-from-content: 1
+  
+  validate-kubernetes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Validate Kubernetes manifests
+        uses: instrumenta/kubeval-action@master
+        with:
+          files: |
+            infrastructure/networking/*/manifests/**/*.yaml
+            infrastructure/monitoring/*/manifests/**/*.yaml
+            gitops/**/*.yaml
+  
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Trivy security scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+  
+  argocd-diff:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: ArgoCD Diff
+        uses: quizlet/argocd-diff-action@main
+        with:
+          argocd-server-url: ${{ secrets.ARGOCD_SERVER }}
+          argocd-token: ${{ secrets.ARGOCD_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          argocd-version: v2.13.0

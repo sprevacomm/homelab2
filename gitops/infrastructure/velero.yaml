@@ -1,0 +1,82 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: velero
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: velero
+    app.kubernetes.io/part-of: infrastructure
+    app.kubernetes.io/component: backup
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  source:
+    repoURL: https://vmware-tanzu.github.io/helm-charts
+    targetRevision: 7.2.1
+    chart: velero
+    helm:
+      releaseName: velero
+      values: |
+        image:
+          repository: velero/velero
+          tag: v1.15.0
+        
+        # Use MinIO for S3-compatible storage
+        configuration:
+          backupStorageLocation:
+          - name: default
+            provider: aws
+            bucket: velero
+            config:
+              region: minio
+              s3ForcePathStyle: true
+              s3Url: http://minio.minio.svc:9000
+              publicUrl: http://minio.minio.svc:9000
+        
+        credentials:
+          useSecret: true
+          name: cloud-credentials
+          secretContents:
+            cloud: |
+              [default]
+              aws_access_key_id = minio
+              aws_secret_access_key = minio123
+        
+        # Enable CSI snapshots
+        features: EnableCSI
+        
+        # Install CRDs
+        installCRDs: true
+        
+        # Resources
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+          requests:
+            cpu: 500m
+            memory: 256Mi
+        
+        # Schedule automatic backups
+        schedules:
+          daily-backup:
+            disabled: false
+            schedule: "0 2 * * *"
+            template:
+              includedNamespaces:
+              - "*"
+              excludedNamespaces:
+              - kube-system
+              - velero
+              ttl: "720h0m0s"  # 30 days
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: velero
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

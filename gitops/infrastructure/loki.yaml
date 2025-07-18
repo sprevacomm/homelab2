@@ -1,0 +1,57 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki-stack
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/part-of: infrastructure
+    app.kubernetes.io/component: logging
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    targetRevision: 2.10.2
+    chart: loki-stack
+    helm:
+      releaseName: loki-stack
+      values: |
+        loki:
+          enabled: true
+          persistence:
+            enabled: true
+            size: 10Gi
+          config:
+            auth_enabled: false
+            compactor:
+              retention_enabled: true
+              retention_delete_delay: 2h
+              retention_delete_worker_count: 150
+            limits_config:
+              retention_period: 168h  # 7 days
+              ingestion_rate_mb: 10
+              ingestion_burst_size_mb: 20
+        
+        promtail:
+          enabled: true
+          config:
+            clients:
+              - url: http://loki:3100/loki/api/v1/push
+        
+        grafana:
+          enabled: false  # Using existing Grafana
+        
+        prometheus:
+          enabled: false  # Using existing Prometheus
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false  # Use existing monitoring namespace

@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: additional-scrape-configs
+  namespace: monitoring
+stringData:
+  prometheus-additional.yaml: |
+    # Scrape ArgoCD metrics
+    - job_name: 'argocd-metrics'
+      static_configs:
+        - targets:
+          - argocd-metrics.argocd.svc:8082
+          - argocd-server-metrics.argocd.svc:8083
+          - argocd-repo-server.argocd.svc:8084
+          - argocd-applicationset-controller.argocd.svc:8085
+    
+    # Scrape cert-manager metrics
+    - job_name: 'cert-manager'
+      static_configs:
+        - targets:
+          - cert-manager.cert-manager.svc:9402
+    
+    # Scrape sealed-secrets metrics
+    - job_name: 'sealed-secrets'
+      static_configs:
+        - targets:
+          - sealed-secrets-controller.kube-system.svc:8080
+    
+    # Blackbox exporter for endpoint monitoring
+    - job_name: 'blackbox'
+      metrics_path: /probe
+      params:
+        module: [http_2xx]
+      static_configs:
+        - targets:
+          - https://grafana.susdomain.name
+          - https://argocd.susdomain.name
+          - https://traefik.susdomain.name
+      relabel_configs:
+        - source_labels: [__address__]
+          target_label: __param_target
+        - source_labels: [__param_target]
+          target_label: instance
+        - target_label: __address__
+          replacement: blackbox-exporter.monitoring.svc:9115

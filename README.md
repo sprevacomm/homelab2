@@ -1,351 +1,182 @@
-# Proxmox RKE2 Kubernetes Cluster Setup Guide
+# Homelab Infrastructure
 
-This guide documents the complete setup of a Proxmox server with 10Gb networking and RKE2 Kubernetes cluster deployment.
+A GitOps-based Kubernetes homelab infrastructure using ArgoCD, featuring networking, monitoring, and DNS management.
 
-## Proxmox Network Configuration
+## 🏗️ Architecture
 
-### 1. Adding SFP+ 10Gb Network Adapter
-
-```bash
-# SSH into Proxmox server
-ssh -p 2222 root@192.168.0.10
-
-# Check network interfaces
-ip link show
-
-# Identify SFP+ interfaces (enp5s0f0np0 and enp5s0f1np1)
-# Bring up interfaces to detect link
-ip link set enp5s0f0np0 up
-ip link set enp5s0f1np1 up
-
-# Create bridge for 10Gb network
-cat >> /etc/network/interfaces << 'EOF'
-
-auto vmbr1
-iface vmbr1 inet static
-	address 192.168.0.20/24
-	gateway 192.168.0.1
-	bridge-ports enp5s0f0np0
-	bridge-stp off
-	bridge-fd 0
-	mtu 9000
-EOF
-
-# Apply configuration
-ifup vmbr1
+```mermaid
+flowchart TB
+    subgraph GitOps
+        A[ArgoCD] -->|Monitors| B[Git Repository]
+        A -->|Deploys| C[Infrastructure Apps]
+    end
+    
+    subgraph Infrastructure
+        C --> D[MetalLB<br/>Load Balancer]
+        C --> E[Traefik<br/>Ingress Controller]
+        C --> F[AdGuard Home<br/>DNS Server]
+        C --> G[Prometheus Stack<br/>Monitoring]
+    end
+    
+    subgraph Services
+        E --> H[Web Services]
+        F --> I[DNS Resolution]
+        G --> J[Metrics & Alerts]
+    end
+    
+    style A fill:#e8f5e9
+    style B fill:#e3f2fd
+    style D fill:#fff3e0
+    style E fill:#fce4ec
+    style F fill:#f3e5f5
+    style G fill:#e0f2f1
 ```
 
-### 2. Migrating Proxmox to 10Gb Interface
+## 📁 Repository Structure
 
-```bash
-# Backup network configuration
-cp /etc/network/interfaces /etc/network/interfaces.backup-$(date +%Y%m%d-%H%M%S)
-
-# Create new network configuration
-cat > /etc/network/interfaces << 'EOF'
-auto lo
-iface lo inet loopback
-
-iface enp3s0 inet manual
-
-auto vmbr0
-iface vmbr0 inet manual
-	bridge-ports enp3s0
-	bridge-stp off
-	bridge-fd 0
-
-auto vmbr1
-iface vmbr1 inet static
-	address 192.168.0.20/24
-	gateway 192.168.0.1
-	bridge-ports enp5s0f0np0
-	bridge-stp off
-	bridge-fd 0
-	mtu 9000
-
-source /etc/network/interfaces.d/*
-EOF
-
-# Restart networking
-systemctl restart networking
+```
+homelab2/
+├── gitops/                      # ArgoCD Application definitions
+│   ├── bootstrap/              # Bootstrap applications
+│   │   └── infrastructure.yaml # App-of-apps for infrastructure
+│   └── infrastructure/         # Infrastructure applications
+│       ├── metallb.yaml       
+│       ├── traefik.yaml       
+│       ├── adguard.yaml       
+│       └── monitoring.yaml    
+│
+├── infrastructure/             # Actual infrastructure code
+│   ├── bootstrap/             # ArgoCD bootstrap
+│   ├── networking/           # Network components
+│   │   ├── metallb/         
+│   │   ├── traefik/         
+│   │   └── adguard/         
+│   ├── monitoring/          # Observability
+│   └── docs/               # Documentation
+│
+└── README_STRUCTURE.md     # Detailed structure guide
 ```
 
-### 3. Disabling Subscription Popup
-
-```bash
-# Backup original file
-cp /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js.bak
-
-# Apply patch for Proxmox 8.x
-sed -i.bak "s/res === null || res === undefined || \\!res || res/false || res === null || res === undefined || \\!res || res/g" /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js
-
-# Restart proxy service
-systemctl restart pveproxy
-
-# Update DNS
-echo 'nameserver 1.1.1.1' >> /etc/resolv.conf
-```
-
-## RKE2 Kubernetes Cluster Deployment
+## 🚀 Quick Start
 
 ### Prerequisites
 
-```bash
-# Install required packages on Proxmox
-apt-get update -qq
-apt-get install -y sshpass
+- RKE2 or K3s cluster (see [RKE2 Setup Guide](docs/RKE2_SETUP.md))
+- kubectl configured
+- Helm 3.x installed
+- 30GB+ available storage
 
-# Generate SSH key for cloud-init
-ssh-keygen -t rsa -N '' -f /root/.ssh/id_rsa -q
-
-# Download Ubuntu cloud image
-cd /var/lib/vz/template/iso
-wget -q https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
-```
-
-### Creating RKE2 Master Node
+### Installation
 
 ```bash
-# Create VM for master node
-qm create 200 \
-  --name rke2-master-01 \
-  --memory 8192 \
-  --cores 4 \
-  --net0 virtio,bridge=vmbr1 \
-  --scsihw virtio-scsi-pci \
-  --scsi0 local-lvm:32 \
-  --ide2 local-lvm:cloudinit \
-  --boot c \
-  --bootdisk scsi0 \
-  --serial0 socket \
-  --vga serial0 \
-  --agent enabled=1
+# 1. Clone repository
+git clone https://github.com/sprevacomm/homelab2.git
+cd homelab2
 
-# Import Ubuntu cloud image
-qm importdisk 200 /var/lib/vz/template/iso/jammy-server-cloudimg-amd64.img local-lvm
+# 2. Run prerequisites
+cd infrastructure/docs
+./prerequisites.sh
 
-# Set imported disk as boot disk
-qm set 200 --scsi0 local-lvm:vm-200-disk-1 --boot c --bootdisk scsi0
+# 3. Bootstrap ArgoCD
+cd ../bootstrap
+./bootstrap.sh
 
-# Configure cloud-init
-qm set 200 \
-  --ipconfig0 ip=192.168.0.201/24,gw=192.168.0.1 \
-  --nameserver 1.1.1.1 \
-  --ciuser ubuntu \
-  --sshkeys /root/.ssh/id_rsa.pub
+# 4. Deploy infrastructure
+kubectl apply -f ../../gitops/bootstrap/infrastructure.yaml
 
-# Clean up and resize disk
-qm disk unlink 200 --idlist unused0
-qm disk resize 200 scsi0 +28G
-
-# Start master node
-qm start 200
+# 5. Watch deployment
+watch kubectl get applications -n argocd
 ```
 
-### Creating Worker Nodes
+## 🔧 Components
 
-```bash
-# Clone master VM for workers
-for i in 1 2; do 
-  qm clone 200 20$i --name rke2-worker-0$i --full
-  qm set 20$i --ipconfig0 ip=192.168.0.20$((i+1))/24,gw=192.168.0.1
-  qm set 20$i --sshkeys /root/.ssh/id_rsa.pub
-done
+### Networking
+- **MetalLB** (v0.15.2) - Bare metal load balancer
+- **Traefik** (v36.3.0) - Ingress controller with Let's Encrypt
+- **AdGuard Home** (v0.107.52) - DNS server with ad blocking
 
-# Start worker nodes
-qm start 201
-qm start 202
-```
+### Monitoring
+- **Prometheus** - Metrics collection
+- **Grafana** - Visualization
+- **Alertmanager** - Alert management
 
-### Installing RKE2
+### GitOps
+- **ArgoCD** (v8.1.3) - Continuous delivery
 
-```bash
-# Wait for VMs to boot
-sleep 45
+## 🌐 Access Points
 
-# Clear known hosts
-ssh-keygen -f '/root/.ssh/known_hosts' -R '192.168.0.201'
-ssh-keygen -f '/root/.ssh/known_hosts' -R '192.168.0.202'
-ssh-keygen -f '/root/.ssh/known_hosts' -R '192.168.0.203'
+After DNS configuration:
+- ArgoCD: `https://argocd.yourdomain.com`
+- Traefik: `https://traefik.yourdomain.com`
+- Grafana: `https://grafana.yourdomain.com`
+- Prometheus: `https://prometheus.yourdomain.com`
+- AdGuard: `https://adguard.yourdomain.com`
 
-# Install RKE2 on master node
-ssh -o StrictHostKeyChecking=no ubuntu@192.168.0.201 'curl -sfL https://get.rke2.io | sudo sh -'
+## 📚 Documentation
 
-# Enable and start RKE2 server
-ssh ubuntu@192.168.0.201 'sudo systemctl enable rke2-server.service && sudo systemctl start rke2-server.service'
+### Setup Guides
+- [RKE2 Setup](docs/RKE2_SETUP.md) - Proxmox RKE2 cluster setup
+- [SSH Setup](docs/SSH_SETUP.md) - SSH key configuration and management
+- [Installation Sequence](infrastructure/docs/INSTALLATION_SEQUENCE.md) - Detailed setup guide
+- [Add Worker Nodes](docs/ADD_WORKER_NODES.md) - Scale your cluster
+- [Improvements Roadmap](docs/IMPROVEMENTS_ROADMAP.md) - Security & reliability enhancements
 
-# Wait for RKE2 to initialize
-sleep 60
+### Reference
+- [Scripts Documentation](docs/SCRIPTS.md) - All available scripts
+- [Structure Guide](README_STRUCTURE.md) - Repository organization
+- [Troubleshooting](infrastructure/docs/TROUBLESHOOTING.md) - Common issues
+- [Local Access](infrastructure/docs/LOCAL_ACCESS.md) - Access without public DNS
+- [Multi-Environment](infrastructure/docs/ENVIRONMENTS.md) - Dev/staging/prod setup
 
-# Get node token
-NODE_TOKEN=$(ssh ubuntu@192.168.0.201 'sudo cat /var/lib/rancher/rke2/server/node-token')
+## 🔐 Default Credentials
 
-# Install RKE2 agent on worker nodes
-for i in 202 203; do 
-  ssh -o StrictHostKeyChecking=no ubuntu@192.168.0.$i 'curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE="agent" sudo sh -'
-done
+⚠️ **Change these immediately after installation!**
 
-# Configure worker nodes to join cluster
-for i in 202 203; do 
-  ssh ubuntu@192.168.0.$i "sudo mkdir -p /etc/rancher/rke2 && \
-    echo 'server: https://192.168.0.201:9345' | sudo tee /etc/rancher/rke2/config.yaml && \
-    echo 'token: $NODE_TOKEN' | sudo tee -a /etc/rancher/rke2/config.yaml"
-done
+- ArgoCD: `admin` / `admin`
+- Grafana: `admin` / `admin`
+- Prometheus: `admin` / `admin`
+- AdGuard: `admin` / `admin`
 
-# Enable and start RKE2 agents
-for i in 202 203; do 
-  ssh ubuntu@192.168.0.$i 'sudo systemctl enable rke2-agent.service && sudo systemctl start rke2-agent.service'
-done
+## 🎯 Key Features
 
-# Wait for nodes to join
-sleep 60
+- **GitOps Pattern** - All changes through Git
+- **Automated SSL** - Let's Encrypt certificates
+- **Service Discovery** - Automatic monitoring
+- **Local DNS** - No external dependencies
+- **High Availability** - Resilient architecture
 
-# Verify cluster nodes
-ssh ubuntu@192.168.0.201 'sudo /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get nodes'
-```
+## 🛠️ Customization
 
-### Setting up kubectl Access
+1. **Update domain**: Replace `susdomain.name` with your domain
+2. **Configure IPs**: Update MetalLB range in `infrastructure/networking/metallb/manifests/base/ipaddresspool.yaml`
+3. **Set email**: Update Let's Encrypt email in Traefik values
+4. **Adjust resources**: Modify resource limits as needed
 
-```bash
-# Copy kubeconfig to Proxmox host
-mkdir -p ~/.kube
-ssh ubuntu@192.168.0.201 'sudo cat /etc/rancher/rke2/rke2.yaml' | sed 's/127.0.0.1/192.168.0.201/' > ~/.kube/config
+## 📊 Monitoring
 
-# Install kubectl
-curl -LO https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl
-chmod +x kubectl
-mv kubectl /usr/local/bin/
+Import these Grafana dashboards:
+- `1860` - Node Exporter Full
+- `7249` - Kubernetes Cluster Overview
+- `17346` - Traefik 3.0+
+- `14584` - ArgoCD
 
-# Test kubectl access
-kubectl get nodes -o wide
-```
+## 🤝 Contributing
 
-## VM Details
+1. Fork the repository
+2. Create feature branch
+3. Commit changes
+4. Push to branch
+5. Create Pull Request
 
-| VM ID | Name | IP Address | CPU | RAM | Role |
-|-------|------|------------|-----|-----|------|
-| 200 | rke2-master-01 | 192.168.0.201 | 4 | 8GB | Master |
-| 201 | rke2-worker-01 | 192.168.0.202 | 4 | 8GB | Worker |
-| 202 | rke2-worker-02 | 192.168.0.203 | 4 | 8GB | Worker |
+## 📄 License
 
-## Access Information
+This project is licensed under the MIT License.
 
-- **Proxmox Web UI**: https://192.168.0.20:8006
-- **SSH Access**: `ssh -p 2222 root@192.168.0.20`
-- **Network**: 10Gb SFP+ on vmbr1
-- **DNS**: 1.1.1.1
+## 🙏 Acknowledgments
 
-## Cluster Verification
-
-```bash
-# Check cluster status
-kubectl get nodes
-kubectl get pods -A
-
-# Deploy a test application
-kubectl create deployment nginx --image=nginx
-kubectl expose deployment nginx --port=80 --type=NodePort
-kubectl get svc nginx
-```
-
-## Accessing the Cluster from Your Workstation
-
-### 1. Copy kubeconfig to your workstation
-```bash
-# From your workstation
-scp -P 2222 root@192.168.0.20:~/.kube/config ~/.kube/proxmox-rke2
-```
-
-### 2. Merge into your existing kubeconfig
-
-```bash
-# Copy the RKE2 kubeconfig to a temporary file
-scp -P 2222 root@192.168.0.20:~/.kube/config /tmp/rke2-config
-
-# Backup your existing config
-cp ~/.kube/config ~/.kube/config.backup
-
-# Merge the configs
-KUBECONFIG=~/.kube/config:/tmp/rke2-config kubectl config view --flatten > ~/.kube/config.new
-mv ~/.kube/config.new ~/.kube/config
-
-# Clean up temp file
-rm /tmp/rke2-config
-
-# Rename the context to something descriptive
-kubectl config rename-context default rke2-proxmox
-
-# List all contexts
-kubectl config get-contexts
-```
-
-### 3. Use with kubectx/kubens (recommended)
-
-```bash
-# List all contexts
-kubectx
-
-# Switch to RKE2 cluster
-kubectx rke2-proxmox
-
-# Switch back to another cluster
-kubectx your-other-cluster
-```
-
-### 4. Verify connection
-```bash
-kubectl cluster-info
-kubectl get nodes -o wide
-```
-
-The cluster is accessible at `https://192.168.0.201:6443` from your workstation.
-
-## Useful Commands
-
-```bash
-# SSH to nodes from Proxmox
-ssh ubuntu@192.168.0.201  # Master
-ssh ubuntu@192.168.0.202  # Worker 1
-ssh ubuntu@192.168.0.203  # Worker 2
-
-# Check RKE2 service status
-ssh ubuntu@192.168.0.201 'sudo systemctl status rke2-server'
-ssh ubuntu@192.168.0.202 'sudo systemctl status rke2-agent'
-
-# View RKE2 logs
-ssh ubuntu@192.168.0.201 'sudo journalctl -u rke2-server -f'
-ssh ubuntu@192.168.0.202 'sudo journalctl -u rke2-agent -f'
-```
-
-## Troubleshooting
-
-### If a node fails to join:
-```bash
-# Check agent logs
-ssh ubuntu@192.168.0.202 'sudo journalctl -u rke2-agent -n 50'
-
-# Verify token
-ssh ubuntu@192.168.0.201 'sudo cat /var/lib/rancher/rke2/server/node-token'
-
-# Restart agent
-ssh ubuntu@192.168.0.202 'sudo systemctl restart rke2-agent'
-```
-
-### Reset a node:
-```bash
-# Stop RKE2
-ssh ubuntu@192.168.0.202 'sudo systemctl stop rke2-agent'
-
-# Uninstall RKE2
-ssh ubuntu@192.168.0.202 'sudo /usr/local/bin/rke2-uninstall.sh'
-
-# Reinstall following the worker node steps above
-```
-
-## Next Steps
-
-1. Install Helm: `curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash`
-2. Deploy ingress controller (nginx/traefik)
-3. Configure storage classes (Longhorn/OpenEBS)
-4. Set up monitoring (Prometheus/Grafana)
-5. Deploy sample applications
+Built with:
+- [ArgoCD](https://argo-cd.readthedocs.io/)
+- [Traefik](https://traefik.io/)
+- [MetalLB](https://metallb.universe.tf/)
+- [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts)
+- [AdGuard Home](https://adguard.com/)
