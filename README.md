@@ -1,34 +1,54 @@
 # Homelab Infrastructure
 
-A GitOps-based Kubernetes homelab infrastructure using ArgoCD, featuring networking, monitoring, and DNS management.
+A modern Kubernetes homelab with clear separation between platform infrastructure and applications, using GitOps for application management.
 
 ## 🏗️ Architecture
 
+The homelab follows a two-layer architecture:
+
+### Platform Layer (Manual Bootstrap)
+Core infrastructure components deployed once during initial setup:
+- Storage provisioning
+- Network load balancing (MetalLB)
+- DNS services (AdGuard Home)
+- Ingress routing (Traefik)
+- SSL certificates (cert-manager)
+- Kubernetes management (Rancher)
+- GitOps controller (ArgoCD)
+
+### Application Layer (GitOps)
+Applications managed through ArgoCD:
+- Monitoring stack (Prometheus/Grafana)
+- Time-series database (InfluxDB)
+- Log aggregation (Loki)
+- Backup solutions (Velero)
+- Additional applications
+
 ```mermaid
 flowchart TB
-    subgraph GitOps
-        A[ArgoCD] -->|Monitors| B[Git Repository]
-        A -->|Deploys| C[Infrastructure Apps]
+    subgraph Platform Layer
+        A[Storage Class] --> B[MetalLB]
+        B --> C[AdGuard DNS]
+        B --> D[Traefik]
+        D --> E[cert-manager]
+        E --> F[Rancher]
+        F --> G[ArgoCD]
     end
     
-    subgraph Infrastructure
-        C --> D[MetalLB<br/>Load Balancer]
-        C --> E[Traefik<br/>Ingress Controller]
-        C --> F[AdGuard Home<br/>DNS Server]
-        C --> G[Prometheus Stack<br/>Monitoring]
-    end
-    
-    subgraph Services
-        E --> H[Web Services]
-        F --> I[DNS Resolution]
-        G --> J[Metrics & Alerts]
+    subgraph Application Layer
+        G -->|GitOps| H[Monitoring Stack]
+        G -->|GitOps| I[InfluxDB]
+        G -->|GitOps| J[Loki]
+        G -->|GitOps| K[Velero]
+        G -->|GitOps| L[Future Apps]
     end
     
     style A fill:#e8f5e9
-    style B fill:#e3f2fd
-    style D fill:#fff3e0
-    style E fill:#fce4ec
-    style F fill:#f3e5f5
+    style B fill:#fff3e0
+    style C fill:#f3e5f5
+    style D fill:#fce4ec
+    style E fill:#e3f2fd
+    style F fill:#fff9c4
     style G fill:#e0f2f1
 ```
 
@@ -36,35 +56,36 @@ flowchart TB
 
 ```
 homelab2/
-├── gitops/                      # ArgoCD Application definitions
-│   ├── bootstrap/              # Bootstrap applications
-│   │   └── infrastructure.yaml # App-of-apps for infrastructure
-│   └── infrastructure/         # Infrastructure applications
-│       ├── metallb.yaml       
-│       ├── traefik.yaml       
-│       ├── adguard.yaml       
-│       └── monitoring.yaml    
+├── infrastructure/                # Platform infrastructure
+│   ├── bootstrap/                # Unified bootstrap system
+│   │   ├── bootstrap-infrastructure.sh  # Main bootstrap script
+│   │   └── README.md            # Bootstrap documentation
+│   ├── monitoring/              # Application configurations
+│   │   ├── influxdb/           # Time-series database
+│   │   └── kube-prometheus/    # Monitoring stack
+│   └── docs/                   # Documentation
 │
-├── infrastructure/             # Actual infrastructure code
-│   ├── bootstrap/             # ArgoCD bootstrap
-│   ├── networking/           # Network components
-│   │   ├── metallb/         
-│   │   ├── traefik/         
-│   │   └── adguard/         
-│   ├── monitoring/          # Observability
-│   └── docs/               # Documentation
+├── gitops/                     # ArgoCD managed applications
+│   ├── bootstrap/             
+│   │   └── applications.yaml   # App-of-apps for applications
+│   └── applications/          # Application definitions
+│       ├── monitoring.yaml    # Prometheus/Grafana
+│       ├── influxdb.yaml     # InfluxDB
+│       ├── loki.yaml         # Log aggregation
+│       └── velero.yaml       # Backups
 │
-└── README_STRUCTURE.md     # Detailed structure guide
+└── docs/                      # Project documentation
+    └── IMPROVEMENTS_ROADMAP.md
 ```
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- RKE2 or K3s cluster (see [RKE2 Setup Guide](docs/RKE2_SETUP.md))
-- kubectl configured
-- Helm 3.x installed
-- 30GB+ available storage
+- Kubernetes cluster (K3s/RKE2/etc)
+- kubectl, helm, git, curl installed
+- 50GB+ available storage
+- IP range for LoadBalancer services (outside DHCP range)
 
 ### Installation
 
@@ -73,92 +94,120 @@ homelab2/
 git clone https://github.com/sprevacomm/homelab2.git
 cd homelab2
 
-# 2. Run prerequisites
-cd infrastructure/docs
-./prerequisites.sh
+# 2. Bootstrap platform infrastructure
+cd infrastructure/bootstrap
+./bootstrap-infrastructure.sh \
+  --metallb-range "192.168.1.200-192.168.1.250" \
+  --domain "homelab.local" \
+  --acme-email "admin@homelab.local"
 
-# 3. Bootstrap ArgoCD
-cd ../bootstrap
-./bootstrap.sh
+# 3. Configure DNS
+# Point *.homelab.local to Traefik LoadBalancer IP
 
-# 4. Deploy infrastructure
-kubectl apply -f ../../gitops/bootstrap/infrastructure.yaml
+# 4. Deploy applications via GitOps
+kubectl apply -f ../../gitops/applications/
 
-# 5. Watch deployment
-watch kubectl get applications -n argocd
+# 5. Access services
+# - AdGuard: http://<adguard-ip>:3000
+# - Traefik: https://traefik.homelab.local
+# - Rancher: https://rancher.homelab.local
+# - ArgoCD: https://argocd.homelab.local
 ```
 
 ## 🔧 Components
 
-### Networking
-- **MetalLB** (v0.15.2) - Bare metal load balancer
-- **Traefik** (v36.3.0) - Ingress controller with Let's Encrypt
-- **AdGuard Home** (v0.107.52) - DNS server with ad blocking
+### Platform Layer (Bootstrap)
+- **Storage Class** - Local path provisioner for persistent storage
+- **MetalLB** - Bare metal load balancer
+- **AdGuard Home** - DNS server with ad blocking
+- **Traefik** - Ingress controller with automatic HTTPS
+- **cert-manager** - Automatic SSL certificate management
+- **Rancher** - Kubernetes cluster management UI
+- **ArgoCD** - GitOps continuous delivery
 
-### Monitoring
-- **Prometheus** - Metrics collection
-- **Grafana** - Visualization
+### Application Layer (GitOps)
+- **Prometheus/Grafana** - Metrics and visualization
+- **InfluxDB** - Time-series database for Proxmox metrics
+- **Loki** - Log aggregation
+- **Velero** - Backup and disaster recovery
 - **Alertmanager** - Alert management
-
-### GitOps
-- **ArgoCD** (v8.1.3) - Continuous delivery
 
 ## 🌐 Access Points
 
 After DNS configuration:
-- ArgoCD: `https://argocd.yourdomain.com`
-- Traefik: `https://traefik.yourdomain.com`
-- Grafana: `https://grafana.yourdomain.com`
-- Prometheus: `https://prometheus.yourdomain.com`
-- AdGuard: `https://adguard.yourdomain.com`
+- Platform Services:
+  - AdGuard: `http://<adguard-ip>:3000` (DNS server)
+  - Traefik: `https://traefik.homelab.local`
+  - Rancher: `https://rancher.homelab.local`
+  - ArgoCD: `https://argocd.homelab.local`
+- Applications:
+  - Grafana: `https://grafana.homelab.local`
+  - Prometheus: `https://prometheus.homelab.local`
+  - InfluxDB: `https://influxdb.homelab.local`
 
 ## 📚 Documentation
 
 ### Setup Guides
-- [RKE2 Setup](docs/RKE2_SETUP.md) - Proxmox RKE2 cluster setup
-- [SSH Setup](docs/SSH_SETUP.md) - SSH key configuration and management
-- [Installation Sequence](infrastructure/docs/INSTALLATION_SEQUENCE.md) - Detailed setup guide
-- [Add Worker Nodes](docs/ADD_WORKER_NODES.md) - Scale your cluster
-- [Improvements Roadmap](docs/IMPROVEMENTS_ROADMAP.md) - Security & reliability enhancements
+- [Bootstrap Guide](infrastructure/bootstrap/README.md) - Platform infrastructure setup
+- [Improvements Roadmap](docs/IMPROVEMENTS_ROADMAP.md) - Architecture and enhancements
+- [InfluxDB Setup](infrastructure/monitoring/influxdb/README.md) - Proxmox metrics collection
 
-### Reference
-- [Scripts Documentation](docs/SCRIPTS.md) - All available scripts
-- [Structure Guide](README_STRUCTURE.md) - Repository organization
-- [Troubleshooting](infrastructure/docs/TROUBLESHOOTING.md) - Common issues
-- [Local Access](infrastructure/docs/LOCAL_ACCESS.md) - Access without public DNS
-- [Multi-Environment](infrastructure/docs/ENVIRONMENTS.md) - Dev/staging/prod setup
+### Architecture
+- [Platform vs Application Layer](docs/IMPROVEMENTS_ROADMAP.md#architecture-refactoring) - Design decisions
+- [GitOps Workflow](infrastructure/bootstrap/README.md#architecture-overview) - How ArgoCD manages apps
+
+### Operations
+- [Disaster Recovery](infrastructure/bootstrap/README.md#disaster-recovery) - Rebuilding from scratch
+- [Troubleshooting](infrastructure/bootstrap/README.md#troubleshooting) - Common issues
+- [Maintenance](infrastructure/bootstrap/README.md#maintenance) - Updates and backups
 
 ## 🔐 Default Credentials
 
 ⚠️ **Change these immediately after installation!**
 
-- ArgoCD: `admin` / `admin`
-- Grafana: `admin` / `admin`
-- Prometheus: `admin` / `admin`
+Platform Services:
 - AdGuard: `admin` / `admin`
+- Rancher: Bootstrap password set to `admin`
+- ArgoCD: `admin` / (retrieve with: `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d`)
+
+Applications (when deployed):
+- Grafana: `admin` / `prom-operator`
+- InfluxDB: `admin` / (retrieve from secret)
 
 ## 🎯 Key Features
 
-- **GitOps Pattern** - All changes through Git
-- **Automated SSL** - Let's Encrypt certificates
-- **Service Discovery** - Automatic monitoring
-- **Local DNS** - No external dependencies
-- **High Availability** - Resilient architecture
+- **Clear Architecture** - Separation between platform and applications
+- **GitOps for Apps** - Application deployment through ArgoCD
+- **Automated SSL** - Let's Encrypt certificates via cert-manager
+- **Local DNS** - AdGuard Home for network-wide DNS
+- **Unified Bootstrap** - Single script platform deployment
+- **Monitoring Ready** - Prometheus, Grafana, and InfluxDB included
+- **Kubernetes Management** - Rancher UI for cluster operations
 
 ## 🛠️ Customization
 
-1. **Update domain**: Replace `susdomain.name` with your domain
-2. **Configure IPs**: Update MetalLB range in `infrastructure/networking/metallb/manifests/base/ipaddresspool.yaml`
-3. **Set email**: Update Let's Encrypt email in Traefik values
-4. **Adjust resources**: Modify resource limits as needed
+Bootstrap script options:
+```bash
+./bootstrap-infrastructure.sh \
+  --metallb-range "10.0.1.200-10.0.1.250" \
+  --domain "lab.example.com" \
+  --acme-email "admin@example.com"
+```
+
+For application customization:
+1. **Update values**: Modify Helm values in `infrastructure/monitoring/*/values/`
+2. **Add applications**: Create new manifests in `gitops/applications/`
+3. **Adjust resources**: Edit resource limits in values files
 
 ## 📊 Monitoring
 
-Import these Grafana dashboards:
+Recommended Grafana dashboards:
 - `1860` - Node Exporter Full
-- `7249` - Kubernetes Cluster Overview
+- `7249` - Kubernetes Cluster Overview  
 - `17346` - Traefik 3.0+
 - `14584` - ArgoCD
+- `10048` - Proxmox VE (with InfluxDB)
+- `15356` - Proxmox Cluster (with InfluxDB)
 
 ## 🤝 Contributing
 
@@ -174,9 +223,16 @@ This project is licensed under the MIT License.
 
 ## 🙏 Acknowledgments
 
-Built with:
-- [ArgoCD](https://argo-cd.readthedocs.io/)
-- [Traefik](https://traefik.io/)
-- [MetalLB](https://metallb.universe.tf/)
-- [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts)
-- [AdGuard Home](https://adguard.com/)
+Platform components:
+- [MetalLB](https://metallb.universe.tf/) - Bare metal load balancer
+- [AdGuard Home](https://adguard.com/) - Network-wide DNS and ad blocking
+- [Traefik](https://traefik.io/) - Modern reverse proxy
+- [cert-manager](https://cert-manager.io/) - Certificate management
+- [Rancher](https://rancher.com/) - Kubernetes management
+- [ArgoCD](https://argo-cd.readthedocs.io/) - GitOps continuous delivery
+
+Application stack:
+- [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts) - Monitoring
+- [InfluxDB](https://www.influxdata.com/) - Time-series database
+- [Loki](https://grafana.com/oss/loki/) - Log aggregation
+- [Velero](https://velero.io/) - Backup solution

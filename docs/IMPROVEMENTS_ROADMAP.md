@@ -2,6 +2,65 @@
 
 This document outlines recommended improvements for making the homelab infrastructure more secure, reliable, and production-ready.
 
+## 🏗️ 0. Architecture Refactoring (Priority: Critical)
+
+### Platform/Application Layer Separation
+**Status:** In Progress
+
+**Current Issue:**
+- ArgoCD manages core infrastructure components (MetalLB, Traefik, etc.)
+- Circular dependencies and bootstrap complexity
+- Difficult to recover from cluster failures
+
+**New Architecture:**
+- **Platform Layer (Manual Bootstrap):**
+  1. Storage Class (local-path-provisioner)
+  2. MetalLB (LoadBalancer provider)
+  3. AdGuard (Local DNS)
+  4. Traefik (Ingress controller)
+  5. Cert-Manager (SSL certificates)
+  6. Rancher (Kubernetes management)
+  7. ArgoCD (GitOps for applications)
+
+- **Application Layer (ArgoCD Managed):**
+  - Prometheus/Grafana monitoring
+  - InfluxDB (time series data)
+  - Loki (log aggregation)
+  - Velero (backups)
+  - Future applications
+
+**Benefits:**
+- Clear separation of concerns
+- Stable platform foundation
+- Easier disaster recovery
+- No circular dependencies
+- DNS available from the start
+
+**Implementation:**
+```bash
+# New bootstrap structure
+infrastructure/bootstrap/
+├── 01-storage-class.sh
+├── 02-metallb.sh
+├── 03-adguard.sh
+├── 04-traefik.sh
+├── 05-cert-manager.sh
+├── 06-rancher.sh
+├── 07-argocd.sh
+└── bootstrap-all.sh
+
+# New GitOps structure
+gitops/
+├── bootstrap/
+│   └── applications.yaml    # Parent app-of-apps for applications only
+└── applications/           # Renamed from 'infrastructure'
+    ├── monitoring.yaml     # Prometheus/Grafana stack
+    ├── influxdb.yaml      # Time series database
+    ├── loki.yaml          # Log aggregation
+    ├── velero.yaml        # Backups
+    └── sealed-secrets.yaml # Secret management
+```
+
 ## 📊 1. Enhanced Observability
 
 ### Loki for Logs (Priority: High)
@@ -16,6 +75,29 @@ This document outlines recommended improvements for making the homelab infrastru
 **Implementation:**
 ```bash
 kubectl apply -f gitops/infrastructure/loki.yaml
+```
+
+### InfluxDB for Time Series Data (Priority: High)
+**Status:** Planned
+
+**Features:**
+- High-performance time series database
+- Native Proxmox metrics collection support
+- Integration with Grafana dashboards
+- Long-term metrics retention
+- Support for custom metrics and telegraf agents
+
+**Use Cases:**
+- Proxmox host metrics (CPU, memory, disk, network)
+- VM/Container performance metrics
+- Storage performance tracking
+- Network throughput monitoring
+- Custom application metrics
+
+**Implementation:**
+```bash
+# To be created at gitops/infrastructure/influxdb.yaml
+kubectl apply -f gitops/infrastructure/influxdb.yaml
 ```
 
 ### Additional Prometheus Targets (Priority: High)
@@ -156,11 +238,18 @@ kubectl apply -f gitops/infrastructure/sealed-secrets.yaml
 
 ## 📋 Implementation Priority
 
+### Phase 0: Architecture Refactoring (Immediate)
+1. ⏳ Refactor to Platform/Application layer separation
+2. ⏳ Create bootstrap scripts for platform components
+3. ⏳ Move core infrastructure out of GitOps
+4. ⏳ Update ArgoCD to manage only applications
+
 ### Phase 1: Observability & Reliability (Week 1)
 1. ✅ Enhanced monitoring dashboards
 2. ✅ Loki for centralized logs
-3. ✅ Backup solution (Velero)
-4. ✅ Additional Prometheus targets
+3. ⏳ InfluxDB for Proxmox metrics
+4. ✅ Backup solution (Velero)
+5. ✅ Additional Prometheus targets
 
 ### Phase 2: Developer Experience (Week 2)
 1. ✅ Makefile for common tasks
@@ -185,6 +274,7 @@ kubectl apply -f gitops/infrastructure/sealed-secrets.yaml
 
 ### Additional CPU/Memory Needs:
 - Loki: 200m CPU, 256Mi RAM
+- InfluxDB: 1 CPU, 2Gi RAM
 - Velero: 500m CPU, 256Mi RAM
 - cert-manager: 100m CPU, 128Mi RAM
 - Sealed Secrets: 100m CPU, 128Mi RAM
@@ -192,6 +282,7 @@ kubectl apply -f gitops/infrastructure/sealed-secrets.yaml
 
 ### Storage Requirements:
 - Loki logs: 20-50Gi
+- InfluxDB data: 50-100Gi
 - Velero backups: 50-100Gi
 - Prometheus (extended): +20Gi
 
@@ -226,21 +317,31 @@ kubectl apply -f gitops/infrastructure/sealed-secrets.yaml
 To implement improvements by priority:
 
 ```bash
-# Phase 1: Observability & Reliability
-kubectl apply -f gitops/infrastructure/loki.yaml
-kubectl apply -f gitops/infrastructure/velero.yaml
-kubectl apply -f infrastructure/monitoring/kube-prometheus-stack/manifests/base/additional-scrape-configs.yaml
+# Phase 0: Architecture Refactoring (Do this first!)
+cd infrastructure/bootstrap
+./01-storage-class.sh
+./02-metallb.sh
+./03-adguard.sh
+./04-traefik.sh
+./05-cert-manager.sh
+./06-rancher.sh
+./07-argocd.sh
+# OR simply run:
+./bootstrap-all.sh
+
+# Phase 1: Observability & Reliability (via ArgoCD)
+kubectl apply -f gitops/applications/monitoring.yaml
+kubectl apply -f gitops/applications/influxdb.yaml
+kubectl apply -f gitops/applications/loki.yaml
+kubectl apply -f gitops/applications/velero.yaml
 
 # Phase 2: Developer Experience
 # Use the Makefile
 make status
-make test-ingress
+make test-applications
 
-# Phase 3: Operations
-kubectl apply -f gitops/infrastructure/cert-manager.yaml
-
-# Phase 4: Security (when ready)
-kubectl apply -f gitops/infrastructure/sealed-secrets.yaml
+# Phase 3: Security (when ready)
+kubectl apply -f gitops/applications/sealed-secrets.yaml
 kubectl apply -f infrastructure/security/network-policies/base/
 kubectl apply -f infrastructure/security/resource-quotas/
 ```

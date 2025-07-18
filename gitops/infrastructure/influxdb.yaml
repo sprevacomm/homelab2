@@ -1,0 +1,46 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: influxdb
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://helm.influxdata.com/
+    targetRevision: 2.1.2
+    chart: influxdb2
+    helm:
+      releaseName: influxdb
+      values: |
+        # Values are loaded from Git repository
+  sources:
+    - repoURL: https://helm.influxdata.com/
+      targetRevision: 2.1.2
+      chart: influxdb2
+      helm:
+        releaseName: influxdb
+        valueFiles:
+          - $values/infrastructure/monitoring/influxdb/values/influxdb.yaml
+    - repoURL: https://github.com/spatnode/homelab2.git
+      targetRevision: HEAD
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

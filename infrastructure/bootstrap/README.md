@@ -1,419 +1,243 @@
-# ArgoCD Documentation
+# Infrastructure Bootstrap
 
-## Overview
+This directory contains the unified infrastructure bootstrap system for the homelab platform.
 
-ArgoCD is a declarative, GitOps continuous delivery tool for Kubernetes. It monitors Git repositories and automatically syncs the cluster state to match the desired state defined in Git.
+## Architecture Overview
 
-**Version:** v8.1.3  
-**Chart Version:** 8.1.3  
-**Namespace:** `argocd`
+The homelab follows a two-layer architecture:
 
-## Architecture
+### Platform Layer (Bootstrap)
+Core infrastructure components that are manually deployed once:
+- **Storage Class** - Persistent storage provider
+- **MetalLB** - LoadBalancer service provider
+- **AdGuard Home** - Local DNS server
+- **Traefik** - Ingress controller
+- **Cert-Manager** - SSL certificate management
+- **Rancher** - Kubernetes management UI
+- **ArgoCD** - GitOps controller
 
-```mermaid
-flowchart LR
-    GitRepo[Git Repo<br/>homelab2] -->|Monitors| ArgoCD[ArgoCD<br/>Controller]
-    ArgoCD -->|Syncs| Cluster[RKE2 Cluster<br/>Resources]
-    
-    style GitRepo fill:#e3f2fd
-    style ArgoCD fill:#c8e6c9
-    style Cluster fill:#fff9c4
-```
+### Application Layer (GitOps)
+Applications managed by ArgoCD:
+- Prometheus/Grafana monitoring stack
+- InfluxDB for time-series data
+- Loki for log aggregation
+- Velero for backups
+- Future applications
 
-### Components
-
-1. **Application Controller** - Monitors applications and compares live state vs desired state
-2. **API Server** - gRPC/REST server for the Web UI, CLI, and CI/CD systems
-3. **Repository Server** - Internal service that maintains a local cache of Git repositories
-4. **Redis** - Caching layer
-5. **Dex** - OIDC provider (disabled in this setup)
-6. **ApplicationSet Controller** - Automates Application creation
-
-## Installation
-
-### Prerequisites
-
-- Kubernetes cluster (RKE2)
-- kubectl configured
-- Helm 3.x installed
-- Git repository (public or with configured credentials)
-
-### Bootstrap Installation
+## Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/sprevacomm/homelab2.git
-cd homelab2/infrastructure/bootstrap
+# Run the unified bootstrap script
+./bootstrap-infrastructure.sh
 
-# Run the bootstrap script
-./bootstrap.sh
+# Or with custom configuration
+./bootstrap-infrastructure.sh \
+  --metallb-range "192.168.1.200-192.168.1.250" \
+  --domain "homelab.local" \
+  --acme-email "admin@homelab.local"
 ```
 
-The bootstrap script performs:
-1. Adds ArgoCD Helm repository
-2. Creates `argocd` namespace
-3. Installs ArgoCD via Helm with custom values
-4. Waits for pods to be ready
+## Prerequisites
 
-### Manual Installation
+Before running the bootstrap:
 
-```bash
-# Add Helm repository
-helm repo add argo https://argoproj.github.io/argo-helm
-helm repo update
+1. **Kubernetes Cluster**: A working K3s/K8s cluster
+2. **Tools**: kubectl, helm, git, curl installed
+3. **Network Planning**: 
+   - Available IP range for MetalLB (outside DHCP range)
+   - Domain name for services
+   - Valid email for Let's Encrypt
 
-# Create namespace
-kubectl create namespace argocd
+## Configuration Options
 
-# Install ArgoCD
-helm install argocd argo/argo-cd \
-  --namespace argocd \
-  --version 8.1.3 \
-  --values values/values.yaml
-```
+The bootstrap script accepts the following options:
 
-## Configuration
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--metallb-range` | IP range for LoadBalancer services | `192.168.1.200-192.168.1.250` |
+| `--domain` | Domain name for services | `homelab.local` |
+| `--acme-email` | Email for Let's Encrypt certificates | `admin@homelab.local` |
+| `--dry-run` | Show what would be installed without making changes | `false` |
+| `--yes` | Skip confirmation prompts | `false` |
 
-### Key Configuration Files
+## Component Details
 
-1. **values/values.yaml** - Helm values for ArgoCD installation
-2. **manifests/base/app-of-apps.yaml** - Root application that manages other applications
-3. **bootstrap.sh** - Installation script
+### Storage Class
+- **Implementation**: Rancher local-path-provisioner
+- **Purpose**: Provides persistent storage for stateful applications
+- **Storage Location**: Node local storage at `/opt/local-path-provisioner`
 
-### Important Settings
+### MetalLB
+- **Purpose**: Provides LoadBalancer service type in bare-metal environments
+- **Mode**: Layer 2 (ARP/NDP)
+- **Configuration**: IP address pool for service allocation
 
-#### Server Configuration
-```yaml
-server:
-  replicas: 1
-  insecure: true  # Internal TLS disabled (TLS termination at ingress)
-  ingress:
-    enabled: true
-    ingressClassName: traefik
-    hosts:
-      - argocd.susdomain.name
-```
+### AdGuard Home
+- **Purpose**: Network-wide DNS server and ad blocker
+- **Default Credentials**: admin/admin (CHANGE IMMEDIATELY)
+- **Services**:
+  - Web UI: Port 3000
+  - DNS: Port 53 (TCP/UDP)
 
-#### Repository Configuration
-```yaml
-configs:
-  cm:
-    repositories: |
-      - type: git
-        url: https://github.com/sprevacomm/homelab2.git
-        name: homelab2
-      - type: helm
-        url: https://metallb.github.io/metallb
-        name: metallb
-      - type: helm
-        url: https://helm.traefik.io/traefik
-        name: traefik
-```
+### Traefik
+- **Purpose**: Kubernetes ingress controller and reverse proxy
+- **Features**:
+  - Automatic HTTPS with Let's Encrypt
+  - HTTP to HTTPS redirect
+  - Kubernetes CRD support
+  - Prometheus metrics
 
-#### RBAC Configuration
-```yaml
-configs:
-  rbac:
-    policy.default: role:readonly
-    policy.csv: |
-      p, role:admin, applications, *, */*, allow
-      p, role:admin, clusters, *, *, allow
-      p, role:admin, repositories, *, *, allow
-      p, role:admin, certificates, *, *, allow
-      p, role:admin, projects, *, *, allow
-      p, role:admin, accounts, *, *, allow
-      p, role:admin, gpgkeys, *, *, allow
-      p, role:admin, logs, *, *, allow
-      p, role:admin, exec, *, *, allow
-      
-      g, argocd-admins, role:admin
-```
+### Cert-Manager
+- **Purpose**: Automatic SSL certificate management
+- **Issuers**:
+  - `letsencrypt-prod`: Production certificates
+  - `letsencrypt-staging`: Testing certificates
 
-### Default Credentials
+### Rancher
+- **Purpose**: Kubernetes cluster management UI
+- **Features**:
+  - Multi-cluster management
+  - User/RBAC management
+  - Application catalog
+  - Monitoring integration
 
-- **Username:** admin
-- **Password:** admin (bcrypt hash in values.yaml)
+### ArgoCD
+- **Purpose**: GitOps continuous delivery
+- **Configuration**:
+  - Watches `gitops/applications/` directory
+  - Auto-sync enabled for applications
+  - Prometheus metrics exposed
 
-⚠️ **IMPORTANT:** Change the default password immediately after installation!
+## Post-Installation Steps
 
-## Usage
-
-### Accessing the UI
-
-1. **Via Ingress (after DNS setup):**
-   ```
-   https://argocd.susdomain.name
-   ```
-
-2. **Via Port Forward (temporary):**
+1. **Configure DNS**:
    ```bash
-   kubectl port-forward svc/argocd-server -n argocd 8080:443
-   # Access at: https://localhost:8080
-   ```
-
-### CLI Access
-
-1. **Install ArgoCD CLI:**
-   ```bash
-   # macOS
-   brew install argocd
+   # Get Traefik LoadBalancer IP
+   kubectl get svc -n traefik traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
    
-   # Linux
-   curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-   chmod +x /usr/local/bin/argocd
+   # Add wildcard DNS record
+   *.homelab.local → <Traefik-IP>
    ```
 
-2. **Login:**
+2. **Change Default Passwords**:
+   - AdGuard: http://<AdGuard-IP>:3000
+   - Rancher: https://rancher.homelab.local
+   - ArgoCD: https://argocd.homelab.local
+
+3. **Configure AdGuard as DNS Server**:
+   - Set router/DHCP to use AdGuard IP as DNS
+   - Configure upstream DNS servers in AdGuard
+   - Add custom DNS entries for local services
+
+4. **Deploy Applications**:
    ```bash
-   argocd login argocd.susdomain.name
-   # or with port-forward
-   argocd login localhost:8080
+   # Apply application manifests
+   kubectl apply -f ../../gitops/applications/
    ```
 
-3. **Change admin password:**
+## Troubleshooting
+
+### MetalLB Issues
+```bash
+# Check MetalLB pods
+kubectl get pods -n metallb-system
+
+# Check IP allocation
+kubectl get svc --all-namespaces -o wide | grep LoadBalancer
+
+# Check MetalLB configuration
+kubectl get ipaddresspool,l2advertisement -n metallb-system
+```
+
+### DNS Resolution Issues
+```bash
+# Test AdGuard DNS
+nslookup google.com <AdGuard-IP>
+
+# Check AdGuard logs
+kubectl logs -n adguard deployment/adguard-adguard-home
+```
+
+### Certificate Issues
+```bash
+# Check cert-manager pods
+kubectl get pods -n cert-manager
+
+# Check certificate status
+kubectl get certificates --all-namespaces
+
+# Check ClusterIssuers
+kubectl get clusterissuers
+```
+
+### Access Issues
+```bash
+# Check ingress routes
+kubectl get ingress,ingressroute --all-namespaces
+
+# Check Traefik logs
+kubectl logs -n traefik deployment/traefik
+```
+
+## Disaster Recovery
+
+To rebuild the platform from scratch:
+
+1. Ensure you have backups of:
+   - This Git repository
+   - Any customized values files
+   - Application data (if using external storage)
+
+2. Run the bootstrap script on a fresh cluster:
    ```bash
-   argocd account update-password
+   ./bootstrap-infrastructure.sh
    ```
 
-### Managing Applications
+3. Restore application data from backups
 
-#### Create an Application
-```bash
-# Via CLI
-argocd app create my-app \
-  --repo https://github.com/sprevacomm/homelab2.git \
-  --path apps/my-app \
-  --dest-server https://kubernetes.default.svc \
-  --dest-namespace default
+4. Apply GitOps applications:
+   ```bash
+   kubectl apply -f ../../gitops/applications/
+   ```
 
-# Via YAML
-kubectl apply -f - <<EOF
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: my-app
-  namespace: argocd
-spec:
-  project: default
-  source:
-    repoURL: https://github.com/sprevacomm/homelab2.git
-    targetRevision: main
-    path: apps/my-app
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: default
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-EOF
-```
+## Security Considerations
 
-#### Sync an Application
-```bash
-# CLI
-argocd app sync my-app
-
-# kubectl
-kubectl patch application my-app -n argocd --type merge \
-  -p '{"operation": {"initiatedBy": {"username": "admin"}, "sync": {}}}'
-```
-
-#### List Applications
-```bash
-# CLI
-argocd app list
-
-# kubectl
-kubectl get applications -n argocd
-```
-
-## App of Apps Pattern
-
-The infrastructure uses the "App of Apps" pattern where a root application manages other applications:
-
-```yaml
-# manifests/base/app-of-apps.yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: infrastructure
-  namespace: argocd
-spec:
-  source:
-    repoURL: https://github.com/sprevacomm/homelab2.git
-    targetRevision: main
-    path: gitops/infrastructure
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: argocd
-```
-
-This pattern provides:
-- Single point of control
-- Automatic discovery of new applications
-- Simplified bootstrapping
+1. **Change all default passwords immediately**
+2. **Use strong passwords and enable MFA where possible**
+3. **Keep the Git repository private if it contains sensitive values**
+4. **Regularly update all components**
+5. **Configure network policies for additional security**
+6. **Use sealed-secrets for sensitive data in Git**
 
 ## Maintenance
 
-### Regular Tasks
+### Updating Components
 
-1. **Monitor Application Health:**
-   ```bash
-   kubectl get applications -n argocd
-   argocd app list
-   ```
+Platform components should be updated carefully:
 
-2. **Check Sync Status:**
-   ```bash
-   argocd app get <app-name>
-   ```
-
-3. **View Application Logs:**
-   ```bash
-   argocd app logs <app-name>
-   ```
-
-### Backup
-
-1. **Export Applications:**
-   ```bash
-   kubectl get applications -n argocd -o yaml > argocd-apps-backup.yaml
-   ```
-
-2. **Export Settings:**
-   ```bash
-   kubectl get configmap argocd-cm -n argocd -o yaml > argocd-cm-backup.yaml
-   kubectl get secret argocd-secret -n argocd -o yaml > argocd-secret-backup.yaml
-   ```
-
-### Updates
-
-1. **Update Helm Values:**
-   ```bash
-   # Edit values/values.yaml
-   # Then upgrade
-   helm upgrade argocd argo/argo-cd \
-     --namespace argocd \
-     --version <new-version> \
-     --values values/values.yaml
-   ```
-
-2. **Update via GitOps:**
-   - Modify the `targetRevision` in the application manifest
-   - Commit and push changes
-   - ArgoCD will auto-sync if configured
-
-### Troubleshooting
-
-#### Application Won't Sync
 ```bash
-# Check application details
-kubectl describe application <app-name> -n argocd
+# Check current versions
+helm list --all-namespaces
 
-# Check events
-kubectl get events -n argocd --sort-by='.lastTimestamp'
-
-# Force refresh
-argocd app get <app-name> --refresh
+# Update a component (example: Traefik)
+helm upgrade traefik traefik/traefik \
+  --namespace traefik \
+  --version <new-version> \
+  --reuse-values
 ```
 
-#### Repository Access Issues
-```bash
-# Test repository access
-argocd repo list
+### Backup Recommendations
 
-# Add repository credentials
-argocd repo add https://github.com/user/repo \
-  --username <username> \
-  --password <password>
-```
+1. **Git Repository**: Regular commits and remote backup
+2. **Persistent Volumes**: Regular snapshots or backup to external storage
+3. **Certificates**: Backed up automatically by cert-manager
+4. **Application Data**: Use Velero for cluster-wide backups
 
-#### Performance Issues
-```bash
-# Check resource usage
-kubectl top pods -n argocd
+## Reference
 
-# Increase resources in values.yaml
-controller:
-  resources:
-    requests:
-      cpu: 500m
-      memory: 512Mi
-    limits:
-      cpu: 1000m
-      memory: 1Gi
-```
-
-## Security Best Practices
-
-1. **Change Default Password:**
-   ```bash
-   argocd account update-password
-   ```
-
-2. **Enable RBAC:**
-   - Configure appropriate roles in `values.yaml`
-   - Map groups to roles for team access
-
-3. **Use HTTPS:**
-   - Always access via HTTPS
-   - Configure proper TLS certificates
-
-4. **Repository Credentials:**
-   - Use SSH keys or GitHub Apps for private repos
-   - Store credentials as Kubernetes secrets
-
-5. **Limit Cluster Access:**
-   ```yaml
-   configs:
-     params:
-       server.disable.auth: false
-       exec.enabled: false  # Disable in production
-   ```
-
-## Integration with CI/CD
-
-### GitHub Actions Example
-```yaml
-name: Deploy to ArgoCD
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      
-      - name: Update Application
-        run: |
-          curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-          chmod +x /usr/local/bin/argocd
-          
-          argocd login ${{ secrets.ARGOCD_SERVER }} \
-            --username ${{ secrets.ARGOCD_USERNAME }} \
-            --password ${{ secrets.ARGOCD_PASSWORD }}
-          
-          argocd app sync my-app
-          argocd app wait my-app
-```
-
-## Monitoring
-
-### Metrics
-ArgoCD exposes Prometheus metrics:
-- `argocd_app_health_status` - Application health
-- `argocd_app_sync_total` - Sync operations count
-- `argocd_app_info` - Application information
-
-### Grafana Dashboard
-Import dashboard ID: 14584 (ArgoCD official dashboard)
-
-## References
-
-- [Official Documentation](https://argo-cd.readthedocs.io/)
-- [Helm Chart](https://github.com/argoproj/argo-helm/tree/main/charts/argo-cd)
-- [Best Practices](https://argo-cd.readthedocs.io/en/stable/user-guide/best_practices/)
-- [GitOps Guide](https://www.gitops.tech/)
+- [MetalLB Documentation](https://metallb.universe.tf/)
+- [Traefik Documentation](https://doc.traefik.io/traefik/)
+- [Cert-Manager Documentation](https://cert-manager.io/docs/)
+- [Rancher Documentation](https://rancher.com/docs/)
+- [ArgoCD Documentation](https://argo-cd.readthedocs.io/)
+- [AdGuard Home Documentation](https://github.com/AdguardTeam/AdGuardHome/wiki)
