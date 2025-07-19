@@ -1,143 +1,244 @@
 # Homelab Repository Structure
 
-This repository follows a clean separation between GitOps application definitions and infrastructure components.
+This repository implements a modern infrastructure-as-code approach with three distinct deployment methods: unified bootstrap scripts, Terraform modules, and GitOps for applications.
 
 ## Directory Structure
 
 ```
 homelab2/
-├── gitops/                      # ArgoCD Application definitions ONLY
-│   ├── bootstrap/              # Bootstrap applications
-│   │   └── infrastructure.yaml # App-of-apps for infrastructure
-│   ├── infrastructure/         # Infrastructure application definitions
-│   │   ├── metallb.yaml       # MetalLB load balancer
-│   │   ├── metallb-config.yaml # MetalLB configuration
-│   │   ├── traefik.yaml       # Traefik ingress controller
-│   │   ├── traefik-config.yaml # Traefik configuration
-│   │   ├── adguard.yaml       # AdGuard DNS server
-│   │   ├── monitoring.yaml    # Prometheus/Grafana stack
-│   │   └── monitoring-config.yaml # Monitoring configuration
-│   └── apps/                   # Future application definitions
+├── infrastructure/             # Bootstrap scripts and configurations
+│   ├── bootstrap/             # Unified platform deployment
+│   │   ├── bootstrap-infrastructure.sh  # Main deployment script
+│   │   ├── cleanup-cluster.sh          # Standard cleanup
+│   │   ├── force-cleanup.sh            # Nuclear cleanup
+│   │   ├── cleanup-helm-hooks.sh       # Helm-specific cleanup
+│   │   └── README.md                   # Bootstrap documentation
+│   └── monitoring/            # Application configurations
+│       ├── influxdb/         # Time-series database
+│       │   ├── values/       # Helm values
+│       │   └── README.md     # InfluxDB setup guide
+│       └── kube-prometheus-stack/
+│           └── values/       # Prometheus/Grafana configuration
 │
-├── infrastructure/             # Actual infrastructure manifests and configs
-│   ├── bootstrap/             # ArgoCD bootstrap files
-│   │   ├── bootstrap.sh       # Initial ArgoCD installation script
-│   │   ├── values/           # ArgoCD Helm values
-│   │   └── manifests/        # Additional ArgoCD resources
-│   ├── networking/           # Network layer components
-│   │   ├── metallb/         # Load balancer for bare metal
-│   │   │   ├── values/      # Helm chart values
-│   │   │   └── manifests/   # IP pools, L2 advertisements
-│   │   ├── traefik/         # Ingress controller
-│   │   │   ├── values/      # Helm chart values  
-│   │   │   └── manifests/   # IngressRoutes, middleware
-│   │   └── adguard/         # DNS server
-│   │       └── manifests/   # Deployment, services, config
-│   ├── monitoring/          # Observability stack
-│   │   └── kube-prometheus-stack/
-│   │       ├── values/      # Prometheus/Grafana configuration
-│   │       └── manifests/   # ServiceMonitors, alert rules
-│   └── docs/               # Documentation
-│       ├── INSTALLATION_SEQUENCE.md
-│       ├── TROUBLESHOOTING.md
-│       ├── LOCAL_ACCESS.md
-│       └── prerequisites.sh
+├── infra/                     # Terraform infrastructure-as-code
+│   ├── .gitignore            # Terraform-specific ignores
+│   ├── versions.tf           # Provider version constraints
+│   ├── providers.tf          # Provider configurations
+│   ├── variables.tf          # Input variables
+│   ├── main.tf              # Root module composition
+│   ├── terraform.tfvars.example  # Example configuration
+│   └── modules/             # Reusable Terraform modules
+│       ├── storage-class/   # Local storage provisioner
+│       ├── mlb/            # MetalLB (placeholder)
+│       ├── adblock/        # AdGuard (placeholder)
+│       ├── traefik/        # Ingress controller (placeholder)
+│       ├── certmgr/        # cert-manager (placeholder)
+│       ├── rancher/        # Kubernetes management (placeholder)
+│       └── promethus/      # Monitoring stack (placeholder)
+│
+├── gitops/                   # ArgoCD managed applications ONLY
+│   ├── bootstrap/           
+│   │   └── applications.yaml # App-of-apps for application layer
+│   └── applications/        # Application definitions (future)
+│       ├── monitoring.yaml  # Prometheus/Grafana
+│       ├── influxdb.yaml   # Time-series metrics
+│       ├── loki.yaml       # Log aggregation
+│       └── velero.yaml     # Backup solution
+│
+├── docs/                    # Project documentation
+│   ├── IMPROVEMENTS_ROADMAP.md  # Architecture evolution
+│   └── SECRETS_MANAGEMENT.md    # SOPS + Age guide
+│
+├── scripts/                 # Utility scripts
+│   └── cleanup-cluster.sh  # Legacy cleanup
 │
 └── README_STRUCTURE.md     # This file
 ```
 
-## Key Concepts
+## Architecture Overview
 
-### GitOps Pattern
+### Three-Layer Approach
 
-1. **GitOps Directory** (`/gitops/`)
-   - Contains ONLY ArgoCD Application CRDs
-   - No actual infrastructure manifests
-   - Organized by application type (infrastructure, apps)
-   - Each app points to manifests in `/infrastructure/` or `/apps/`
+1. **Platform Layer** (Bootstrap Scripts or Terraform)
+   - Core infrastructure that rarely changes
+   - Deployed once during initial setup
+   - Includes: Storage, Networking, DNS, Ingress, SSL, Management UI
 
-2. **Infrastructure Directory** (`/infrastructure/`)
-   - Contains actual Kubernetes manifests
-   - Helm values files
-   - Configuration files
-   - Scripts and documentation
+2. **GitOps Layer** (ArgoCD)
+   - Manages application deployments
+   - Continuous reconciliation from Git
+   - Only manages non-platform components
 
-### Application Organization
+3. **Application Layer** (Via GitOps)
+   - Monitoring, logging, backups
+   - Business applications
+   - Frequently updated components
 
-Each infrastructure component follows this pattern:
+### Deployment Methods
 
+#### Option 1: Bootstrap Script (Simple)
+```bash
+cd infrastructure/bootstrap
+./bootstrap-infrastructure.sh \
+  --metallb-range "192.168.1.200-192.168.1.250" \
+  --domain "homelab.local" \
+  --acme-email "admin@homelab.local"
 ```
-component/
-├── values/              # Helm chart values (if using Helm)
-│   └── values.yaml
-└── manifests/          # Additional Kubernetes manifests
-    └── *.yaml          # ConfigMaps, custom resources, etc.
+
+#### Option 2: Terraform (Infrastructure as Code)
+```bash
+cd infra
+terraform init
+terraform plan
+terraform apply
 ```
 
-## Installation Flow
+#### Then: GitOps for Applications
+```bash
+kubectl apply -f gitops/applications/
+```
 
-1. **Bootstrap ArgoCD**
-   ```bash
-   cd infrastructure/bootstrap
-   ./bootstrap.sh
-   ```
+## Key Design Decisions
 
-2. **Deploy Infrastructure**
-   ```bash
-   kubectl apply -f gitops/bootstrap/infrastructure.yaml
-   ```
+### Why Platform/Application Separation?
 
-3. **Components Deploy in Order** (via sync waves):
-   - Wave -3: MetalLB (provides LoadBalancer IPs)
-   - Wave -2: MetalLB configuration
-   - Wave -1: Traefik, AdGuard (networking layer)
-   - Wave 0: Monitoring, Traefik config
-   - Wave 1: Monitoring config
+1. **No Circular Dependencies**
+   - ArgoCD doesn't manage itself or its dependencies
+   - Platform components don't depend on GitOps
+
+2. **Stability**
+   - Platform rarely changes after initial setup
+   - Applications can be updated frequently
+
+3. **Disaster Recovery**
+   - Platform can be quickly restored with script/Terraform
+   - Applications restored via GitOps
+
+### Platform Components
+
+| Component | Purpose | Why Platform? |
+|-----------|---------|---------------|
+| Storage Class | Persistent volumes | Foundation for all stateful apps |
+| MetalLB | LoadBalancer IPs | Required for service exposure |
+| AdGuard | DNS server | Name resolution for all services |
+| Traefik | Ingress controller | HTTP/HTTPS routing |
+| cert-manager | SSL certificates | Security foundation |
+| Rancher | K8s management | Cluster operations |
+| ArgoCD | GitOps controller | Manages applications |
+
+### Application Components
+
+| Component | Purpose | Why Application? |
+|-----------|---------|-----------------|
+| Prometheus/Grafana | Monitoring | Frequently updated, many configs |
+| InfluxDB | Time-series DB | Application-specific metrics |
+| Loki | Log aggregation | Optional component |
+| Velero | Backups | Optional, policy-driven |
 
 ## Adding New Components
 
-### For Infrastructure:
+### For Platform Components (Terraform):
 
-1. Create manifest directory:
+1. Create new module:
    ```bash
-   mkdir -p infrastructure/category/component/{values,manifests}
+   mkdir -p infra/modules/component-name
    ```
 
-2. Add manifests/values files
+2. Add module files:
+   ```
+   modules/component-name/
+   ├── README.md      # Module documentation
+   ├── main.tf        # Resources
+   ├── variables.tf   # Input variables
+   ├── outputs.tf     # Output values
+   └── versions.tf    # Provider requirements
+   ```
 
-3. Create ArgoCD application:
+3. Use in root module:
+   ```hcl
+   module "component_name" {
+     source = "./modules/component-name"
+     # ... configuration
+   }
+   ```
+
+### For Applications (GitOps):
+
+1. Create application manifest:
    ```yaml
-   # gitops/infrastructure/component.yaml
+   # gitops/applications/app-name.yaml
    apiVersion: argoproj.io/v1alpha1
    kind: Application
    metadata:
-     name: component
+     name: app-name
      namespace: argocd
    spec:
+     project: default
      source:
-       repoURL: https://github.com/sprevacomm/homelab2.git
+       repoURL: https://github.com/yourusername/homelab2
+       path: infrastructure/apps/app-name
        targetRevision: main
-       path: infrastructure/category/component/manifests
+     destination:
+       server: https://kubernetes.default.svc
+       namespace: app-namespace
+     syncPolicy:
+       automated:
+         prune: true
+         selfHeal: true
    ```
 
-### For Applications:
+2. Add application configuration:
+   ```bash
+   mkdir -p infrastructure/apps/app-name/values
+   ```
 
-Similar pattern but under `/apps/` directory.
+## Migration Path
+
+### From Old Architecture to New
+
+1. **Clean cluster** (if needed):
+   ```bash
+   infrastructure/bootstrap/cleanup-cluster.sh
+   ```
+
+2. **Deploy platform** (choose one):
+   - Script: `./bootstrap-infrastructure.sh`
+   - Terraform: `terraform apply`
+
+3. **Deploy applications**:
+   ```bash
+   kubectl apply -f gitops/applications/
+   ```
 
 ## Benefits of This Structure
 
-1. **Clear Separation of Concerns**
-   - GitOps definitions separate from actual manifests
-   - Easy to understand what deploys what
+1. **Clear Architecture**
+   - Platform vs Application separation
+   - Multiple deployment options (script/Terraform)
+   - GitOps for application management
 
-2. **Reusability**
-   - Infrastructure can be referenced by multiple environments
-   - GitOps apps can point to different branches/tags
+2. **Flexibility**
+   - Choose deployment method that fits your needs
+   - Easy to switch between methods
+   - Modular design
 
 3. **Maintainability**
-   - Updates to infrastructure don't require GitOps changes
-   - Easy to track what ArgoCD is managing
+   - Platform components rarely change
+   - Applications easily updated via Git
+   - Clear ownership boundaries
 
-4. **Scalability**
-   - Add new apps without cluttering infrastructure
-   - Organize by function (networking, monitoring, security)
+4. **Disaster Recovery**
+   - Platform: Re-run script or `terraform apply`
+   - Applications: ArgoCD auto-syncs from Git
+   - No complex state management
+
+## Directory Purposes
+
+| Directory | Purpose | Deployment Method |
+|-----------|---------|-------------------|
+| `/infrastructure/bootstrap/` | Unified scripts | Manual execution |
+| `/infra/` | Terraform modules | `terraform apply` |
+| `/gitops/` | ArgoCD applications | GitOps sync |
+| `/infrastructure/monitoring/` | App configurations | Referenced by GitOps |
+| `/docs/` | Documentation | N/A |
+| `/scripts/` | Utilities | Manual execution |

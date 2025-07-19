@@ -1,0 +1,15 @@
+# Kubernetes Configuration
+kubeconfig_path    = "~/.kube/config"
+kubeconfig_context = "" # Leave empty for current context
+
+# Network Configuration
+metallb_ip_range = "192.168.1.200-192.168.1.250"
+
+# Domain Configuration
+domain     = "homelab.local"
+acme_email = "admin@homelab.local"
+
+# Feature Flags
+enable_monitoring = true
+enable_rancher   = true
+enable_argocd    = true
